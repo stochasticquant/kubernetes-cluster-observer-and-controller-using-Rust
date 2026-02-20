@@ -12,5 +12,8 @@ pub struct Cli {
 pub enum Commands {
     Version,
     Check,
-    List { resource: String },
+    List {
+        resource: String,
+    },
+    Analyze,
 }

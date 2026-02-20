@@ -13,6 +13,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Check => commands::check::run()?,
         Commands::List { resource } => {
             commands::list::run(resource).await?;
+        },
+        Commands::Analyze => {
+            commands::analyze::run().await?;
         }
     }
 
