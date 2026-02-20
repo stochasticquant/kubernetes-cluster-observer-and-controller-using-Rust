@@ -46,22 +46,23 @@ This repository represents the foundation (Step 1) of that journey.
 
 ------------------------------------------------------------------------
 
-## Current Stage: Step 1 -- Rust CLI Foundation
+## Current Stage: Step 3 -- DevOps Analyzer Engine
 
 At this stage, the project provides:
 
 -   A structured Rust CLI application
 -   Modular architecture
--   Proper error handling
--   Production-ready project layout
--   Git-integrated repository
--   Clean `.gitignore` configuration
+-   Async Kubernetes API integration
+-   DevOps workload analysis and scoring
+-   Governance-style reporting
 
 The CLI currently supports:
 
 ``` bash
 kube-devops version
 kube-devops check
+kube-devops list pods
+kube-devops analyze
 ```
 
 ------------------------------------------------------------------------
@@ -77,7 +78,13 @@ kube-devops check
      │   └── commands/
      │        ├── mod.rs
      │        ├── version.rs
-     │        └── check.rs
+     │        ├── check.rs
+     │        ├── list.rs
+     │        └── analyze.rs
+     └── docs/
+     │   ├── Step_1_Code_Explanation.md
+     │   ├── Step_2_Kubernetes_Integration.md
+     │   └── Step_3_DevOps_Analyzer_Engine.md
      └── README.md
 
 Design Principles:
@@ -85,7 +92,7 @@ Design Principles:
 -   Separation of concerns
 -   Modular command delegation
 -   Idiomatic Rust error propagation
--   Future extensibility for async + Kubernetes integration
+-   Async-ready architecture for Kubernetes I/O
 
 ------------------------------------------------------------------------
 
@@ -96,6 +103,8 @@ You must have:
 -   Rust (stable)
 -   Cargo
 -   Git
+-   Access to a Kubernetes cluster
+-   A valid kubeconfig in `~/.kube/config`
 
 To install Rust:
 
@@ -153,6 +162,8 @@ When using Cargo:
 ``` bash
 cargo run -- version
 cargo run -- check
+cargo run -- list pods
+cargo run -- analyze
 ```
 
 Important:
@@ -170,12 +181,15 @@ After building:
 ``` bash
 ./target/debug/kube-devops version
 ./target/debug/kube-devops check
+./target/debug/kube-devops list pods
+./target/debug/kube-devops analyze
 ```
 
 Or for release:
 
 ``` bash
 ./target/release/kube-devops version
+./target/release/kube-devops analyze
 ```
 
 ------------------------------------------------------------------------
@@ -185,6 +199,29 @@ Or for release:
 ``` bash
 kube-devops version 0.1.0
 Running DevOps checks...
+```
+
+Example output for `list`:
+
+``` bash
+default             pod-name-12345                   Running         node-1
+kube-system         coredns-558bd4d5db-abc12         Running         node-2
+```
+
+Example output for `analyze`:
+
+``` bash
+===== DevOps Governance Summary =====
+Workload Pods Analyzed     : 12
+Images using :latest       : 2
+Missing liveness probes    : 5
+Missing readiness probes   : 3
+Restart severity score     : 4
+Pending pods               : 1
+--------------------------------------
+Cluster Health Score       : 73
+Cluster Status             : Stable
+======================================
 ```
 
 ------------------------------------------------------------------------
@@ -234,12 +271,15 @@ Open Pull Request → Merge into main.
 
 ## Roadmap
 
-Upcoming phases include:
+Completed in current steps:
 
 -   Async Rust with Tokio
 -   Kubernetes API client integration
--   Pod inspection capabilities
--   DevOps audit checks
+-   Pod inspection capabilities (list)
+-   DevOps audit checks (analyze)
+
+Upcoming phases include:
+
 -   CRD creation
 -   Reconciliation controller
 -   Admission webhook
