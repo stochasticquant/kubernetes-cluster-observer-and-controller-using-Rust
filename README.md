@@ -44,12 +44,13 @@ on building similar capabilities from scratch to deeply understand:
 
 ------------------------------------------------------------------------
 
-## Current Stage: Step 6 -- Policy Enforcement Mode
+## Current Stage: Step 7 -- Admission Webhook
 
-The project is now a **true Kubernetes Operator** with policy enforcement —
-it can detect violations **and** automatically patch non-compliant workloads:
+The project now includes **preventive control** via a Validating Admission Webhook —
+non-compliant Pods are **rejected before creation** in addition to detecting and
+remediating existing violations:
 
--   Structured Rust CLI with 8 subcommands
+-   Structured Rust CLI with 11 subcommands
 -   `DevOpsPolicy` CRD (`devops.stochastic.io/v1`) for user-defined governance rules
 -   Controller reconciliation loop via `kube_runtime::Controller`
 -   Policy-aware pod evaluation (only checks what the policy enables)
@@ -68,7 +69,11 @@ it can detect violations **and** automatically patch non-compliant workloads:
 -   Leader election via Kubernetes Lease API for HA deployment
 -   Structured JSON logging via `tracing`
 -   Graceful shutdown with `Ctrl+C` handling (both watch and reconcile modes)
--   Comprehensive test suite (144+ tests)
+-   Validating Admission Webhook (HTTPS, TLS, self-signed cert generation)
+-   Admission checks: reject `:latest` tags, missing probes at creation time
+-   Fail-open design — webhook errors never block the cluster
+-   System namespace bypass — never blocks `kube-system`, `cert-manager`, etc.
+-   Comprehensive test suite (186 tests)
 
 ### CLI Commands
 
@@ -81,6 +86,10 @@ kube-devops watch         # Start real-time governance watch controller
 kube-devops crd generate  # Print DevOpsPolicy CRD YAML to stdout
 kube-devops crd install   # Install CRD into connected cluster
 kube-devops reconcile     # Start the DevOpsPolicy operator reconcile loop
+kube-devops webhook serve # Start the admission webhook HTTPS server
+kube-devops webhook cert-generate   # Generate self-signed TLS certificates
+kube-devops webhook cert-generate --ip-san 192.168.1.26  # With IP SANs for dev
+kube-devops webhook install-config  # Print ValidatingWebhookConfiguration YAML
 ```
 
 ------------------------------------------------------------------------
@@ -94,8 +103,9 @@ kube-devops/
  ├── rust-toolchain.toml
  ├── src/
  │   ├── main.rs              # Entry point, async runtime, command routing
- │   ├── lib.rs               # Library crate: exports crd + governance + enforcement
- │   ├── cli.rs               # clap CLI definition (8 subcommands)
+ │   ├── lib.rs               # Library crate: exports admission + crd + governance + enforcement
+ │   ├── cli.rs               # clap CLI definition (11 subcommands)
+ │   ├── admission.rs         # Pure admission validation logic
  │   ├── crd.rs               # DevOpsPolicy CRD definition (spec + status)
  │   ├── enforcement.rs       # Policy enforcement: owner resolution, remediation, patching
  │   ├── governance.rs        # Scoring engine, pod evaluation, policy-aware checks
@@ -107,16 +117,19 @@ kube-devops/
  │        ├── analyze.rs      # One-shot governance analysis
  │        ├── watch.rs        # Watch controller, HTTP server, leader election
  │        ├── crd.rs          # CRD generate/install commands
- │        └── reconcile.rs    # Operator reconcile loop, finalizers, metrics
+ │        ├── reconcile.rs    # Operator reconcile loop, finalizers, metrics
+ │        └── webhook.rs      # Admission webhook HTTPS server, cert gen, config
  ├── tests/
  │   ├── common/
  │   │   └── mod.rs                  # Shared test pod builder helper
+ │   ├── admission_integration.rs    # Admission pipeline tests
  │   ├── enforcement_integration.rs  # Enforcement pipeline tests
  │   ├── governance_integration.rs   # End-to-end governance pipeline tests
  │   └── operator_integration.rs     # Operator reconcile pipeline tests
  ├── kube-tests/
  │   ├── test-pod.yaml               # Test pod manifest
- │   └── sample-devopspolicy.yaml    # Example DevOpsPolicy CR
+ │   ├── sample-devopspolicy.yaml    # Example DevOpsPolicy CR
+ │   └── webhook-config.yaml         # ValidatingWebhookConfiguration template
  └── docs/
      ├── Step_1_Code_Explanation.md
      ├── Step_2_Kubernetes_Integration.md
@@ -137,15 +150,17 @@ kube-devops/
 
 | Subsystem | File | Description |
 |---|---|---|
-| CLI | `cli.rs` | clap-based command parsing with 8 subcommands |
+| CLI | `cli.rs` | clap-based command parsing with 11 subcommands |
+| Admission | `admission.rs` | Pure admission validation logic (policy-driven, fail-open) |
 | CRD | `crd.rs` | DevOpsPolicy CRD definition with spec + status + enforcement types |
 | Governance Engine | `governance.rs` | Pod evaluation, violation detection, policy-aware checks, weighted scoring |
 | Enforcement Engine | `enforcement.rs` | Owner resolution, remediation planning, workload patching |
 | Operator Reconciler | `commands/reconcile.rs` | Controller reconcile loop, finalizers, status updates |
 | Watch Controller | `commands/watch.rs` | Kubernetes Watch API stream processing, incremental state updates |
+| Admission Webhook | `commands/webhook.rs` | HTTPS server, TLS cert generation, webhook config |
 | Leader Election | `commands/watch.rs` | Lease-based leader election for HA multi-replica deployment |
 | HTTP Server | `commands/watch.rs` | axum server exposing `/healthz`, `/readyz`, `/metrics` |
-| Prometheus | `commands/watch.rs`, `commands/reconcile.rs` | Metrics for watch, reconcile, and enforcement |
+| Prometheus | `commands/watch.rs`, `commands/reconcile.rs`, `commands/webhook.rs` | Metrics for watch, reconcile, enforcement, and admission |
 | Logging | `main.rs` | Structured JSON logging via `tracing` + `tracing-subscriber` |
 
 ### Governance Scoring
@@ -226,6 +241,10 @@ cargo run -- watch
 cargo run -- crd generate
 cargo run -- crd install
 cargo run -- reconcile
+cargo run -- webhook serve --tls-cert tls.crt --tls-key tls.key
+cargo run -- webhook cert-generate
+cargo run -- webhook cert-generate --ip-san 192.168.1.26
+cargo run -- webhook install-config --ca-bundle-path ca.crt
 ```
 
 Using the compiled binary directly:
@@ -239,6 +258,10 @@ Using the compiled binary directly:
 ./target/debug/kube-devops crd generate
 ./target/debug/kube-devops crd install
 ./target/debug/kube-devops reconcile
+./target/debug/kube-devops webhook serve --tls-cert tls.crt --tls-key tls.key
+./target/debug/kube-devops webhook cert-generate
+./target/debug/kube-devops webhook cert-generate --ip-san 192.168.1.26
+./target/debug/kube-devops webhook install-config --ca-bundle-path ca.crt
 ```
 
 ------------------------------------------------------------------------
@@ -282,18 +305,52 @@ Endpoints available while running:
 
 ------------------------------------------------------------------------
 
+## Running the Admission Webhook (Step 7)
+
+The `webhook` subcommand manages the Validating Admission Webhook:
+
+1. Generate TLS certificates: `cargo run -- webhook cert-generate`
+   - For dev (outside cluster): `cargo run -- webhook cert-generate --ip-san <YOUR_IP>`
+2. Start the webhook server: `cargo run -- webhook serve --tls-cert tls.crt --tls-key tls.key`
+3. Install the webhook config: `cargo run -- webhook install-config --ca-bundle-path ca.crt | kubectl apply -f -`
+4. Test: `kubectl run test-latest --image=nginx:latest -n production`
+
+The webhook rejects Pods that violate the namespace's `DevOpsPolicy` rules
+(`:latest` tags, missing probes). Pods in system namespaces are always allowed.
+If the webhook can't reach the policy or encounters an error, it **fails open**
+to avoid blocking the cluster.
+
+**Note:** When running outside the cluster, use `--ip-san` with your machine's IP
+during cert generation, and use a `url`-based `clientConfig` in the webhook
+configuration instead of a `service` reference. See `docs/Step_7_Admission_Webhook.md`
+for details.
+
+Endpoints available while running:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /validate` | Admission review handler |
+| `GET /healthz` | Liveness probe (always 200 OK) |
+| `GET /readyz` | Readiness probe (200 when ready) |
+| `GET /metrics` | Prometheus metrics (webhook_requests_total, webhook_denials_total) |
+
+------------------------------------------------------------------------
+
 ## Testing
 
-The project includes 144+ automated tests that run without a Kubernetes
+The project includes 186 automated tests that run without a Kubernetes
 cluster. All Pod and CRD objects are constructed synthetically in-memory.
 
 ``` bash
-cargo test                                       # Full suite (144+ tests)
+cargo test                                       # Full suite (186 tests)
+cargo test --lib admission::tests                # Admission unit tests (16)
 cargo test --lib governance::tests               # Governance unit tests (48)
 cargo test --lib crd::tests                      # CRD unit tests (18)
 cargo test --lib enforcement::tests              # Enforcement unit tests (30)
 cargo test --lib commands::watch::tests          # HTTP endpoint tests (5)
 cargo test --lib commands::reconcile::tests      # Reconcile unit tests (13)
+cargo test --lib commands::webhook::tests        # Webhook unit tests (8)
+cargo test --test admission_integration          # Admission integration tests (12)
 cargo test --test governance_integration         # Governance integration tests (6)
 cargo test --test operator_integration           # Operator integration tests (13)
 cargo test --test enforcement_integration        # Enforcement integration tests (8)
@@ -301,16 +358,19 @@ cargo test --test enforcement_integration        # Enforcement integration tests
 
 | Test Layer | Location | Count | Scope |
 |---|---|---|---|
+| Unit (lib) | `src/admission.rs` | 16 | Verdict logic, policy filtering, denial messages, multi-container |
 | Unit (lib) | `src/governance.rs` | 48 | Namespace filter, pod evaluation, violation detection, metrics, scoring, policy-aware evaluation |
 | Unit (lib) | `src/crd.rs` | 18 | CRD schema, serialization, enforcement types, backward compatibility |
 | Unit (lib) | `src/enforcement.rs` | 30 | Owner resolution, probe/resource building, plan generation, patch construction |
 | Unit (bin) | `src/commands/watch.rs` | 5 | healthz, readyz (ready/not-ready), metrics, 404 handling |
 | Unit (bin) | `src/commands/reconcile.rs` | 13 | Aggregation, finalizers, deletion, status computation, system ns filtering |
+| Unit (bin) | `src/commands/webhook.rs` | 8 | Admission response, cert generation, TLS validation, config output |
+| Integration | `tests/admission_integration.rs` | 12 | Full admission pipeline, fail-open, multi-container, runtime check skip |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline from pod to health classification |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema round-trip |
 | Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection, deduplication |
 
-See `docs/Step_4_Testing.md` and `docs/Step_5_Kubernetes_Operator.md` for full test documentation.
+See `docs/Step_4_Testing.md`, `docs/Step_5_Kubernetes_Operator.md`, and `docs/Step_7_Admission_Webhook.md` for full test documentation.
 
 ------------------------------------------------------------------------
 
@@ -359,6 +419,10 @@ Cluster Status             : Stable
 | `axum` | HTTP server for health/metrics endpoints |
 | `prometheus` | Metrics registry and text encoding |
 | `tracing` / `tracing-subscriber` | Structured JSON logging |
+| `axum-server` | HTTPS server with rustls TLS for admission webhook |
+| `rcgen` | Self-signed TLS certificate generation |
+| `rustls-pemfile` | PEM certificate/key file loading |
+| `base64` | Encoding CA bundle for webhook configuration |
 | `anyhow` | Error handling |
 | `serde` / `serde_json` / `serde_yaml` | Serialization for CRD structs and YAML output |
 | `schemars` | JSON Schema generation for CRD validation |
@@ -397,12 +461,12 @@ Open Pull Request -> Merge into main.
 | 4 | Real-time watch engine (Watch API, leader election, Prometheus, HTTP endpoints, test suite) | Done |
 | 5 | Kubernetes Operator (DevOpsPolicy CRD, reconciliation loop, finalizers, policy-aware evaluation, 98 tests) | Done |
 | 6 | Policy enforcement mode (audit/enforce, auto-patch workloads, inject probes+limits, 144+ tests) | Done |
+| 7 | Admission webhook (HTTPS, TLS, self-signed certs, fail-open, system ns bypass, 186 tests) | Done |
 
 ## Roadmap
 
 | Step | Milestone | Status |
 |---|---|---|
-| 7 | Admission webhook (reject violations at creation time) | Planned |
 | 8 | Prometheus expansion (ServiceMonitor, Grafana dashboards) | Planned |
 | 9 | High availability & production hardening | Planned |
 | 10 | Multi-cluster governance & policy bundles | Planned |
@@ -439,6 +503,7 @@ This project serves as a platform engineering laboratory using a real
 | `docs/Step_4_Testing.md` | Test suite documentation (Step 4 tests) |
 | `docs/Step_5_Kubernetes_Operator.md` | CRD, reconciliation loop, finalizers, operator architecture |
 | `docs/Step_6_Policy_Enforcement.md` | Enforcement mode, remediation planning, patching architecture |
+| `docs/Step_7_Admission_Webhook.md` | Admission webhook, TLS, fail-open design, CLI commands |
 | `docs/Kubernetes_Observability_Controller_Progress.md` | Implementation progress tracker |
 | `docs/Kubernetes_Observability_Policy_Controller_Roadmap.md` | Full 10-step roadmap |
 | `docs/Rust_Foundations_for_Kubernetes_DevOps.md` | Rust language foundations reference |

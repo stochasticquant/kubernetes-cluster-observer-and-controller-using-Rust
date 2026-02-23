@@ -5,7 +5,7 @@ use tracing_subscriber::prelude::*;
 mod cli;
 mod commands;
 
-use cli::{Cli, CrdAction, Commands};
+use cli::{Cli, CrdAction, Commands, WebhookAction};
 
 /// Wrap an async command so Ctrl+C produces a clean shutdown message.
 ///
@@ -57,6 +57,17 @@ async fn main() -> anyhow::Result<()> {
         Commands::Analyze => interruptible(commands::analyze::run()).await?,
         Commands::Crd { action: CrdAction::Install } => {
             interruptible(commands::crd::install()).await?
+        }
+
+        // Webhook subcommands
+        Commands::Webhook { action: WebhookAction::Serve { addr, tls_cert, tls_key } } => {
+            commands::webhook::serve(&addr, &tls_cert, &tls_key).await?
+        }
+        Commands::Webhook { action: WebhookAction::CertGenerate { service_name, namespace, output_dir, ip_sans } } => {
+            commands::webhook::generate_certs(&service_name, &namespace, &output_dir, &ip_sans)?
+        }
+        Commands::Webhook { action: WebhookAction::InstallConfig { service_name, namespace, ca_bundle_path } } => {
+            commands::webhook::install_config(&service_name, &namespace, &ca_bundle_path)?
         }
     }
 
