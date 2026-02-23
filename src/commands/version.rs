@@ -1,4 +1,4 @@
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    println!("kube-devops version 0.1.0");
+pub fn run() -> anyhow::Result<()> {
+    println!("kube-devops version {}", env!("CARGO_PKG_VERSION"));
     Ok(())
 }
