@@ -50,6 +50,11 @@
 Thumbs.db
 
 # =========================
+# Build output
+# =========================
+build_output.txt
+
+# =========================
 # Generated TLS certificates
 # =========================
 ca.crt
