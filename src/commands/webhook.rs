@@ -9,7 +9,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use kube::api::ListParams;
 use kube::{Api, Client};
-use prometheus::{Encoder, IntCounterVec, Registry, TextEncoder};
+use prometheus::{Encoder, Histogram, IntCounterVec, Registry, TextEncoder};
 use tokio::sync::broadcast;
 use tracing::info;
 
@@ -47,6 +47,18 @@ static WEBHOOK_DENIALS: LazyLock<IntCounterVec> = LazyLock::new(|| {
         .register(Box::new(c.clone()))
         .expect("metric not yet registered");
     c
+});
+
+static WEBHOOK_DURATION: LazyLock<Histogram> = LazyLock::new(|| {
+    let h = Histogram::with_opts(prometheus::HistogramOpts::new(
+        "webhook_request_duration_seconds",
+        "Duration of admission webhook request processing in seconds",
+    ))
+    .expect("metric definition is valid");
+    WEBHOOK_REGISTRY
+        .register(Box::new(h.clone()))
+        .expect("metric not yet registered");
+    h
 });
 
 /* ============================= STATE ============================= */
@@ -219,6 +231,8 @@ async fn admission_handler(
     State(state): State<WebhookState>,
     body: String,
 ) -> impl IntoResponse {
+    let _timer = WEBHOOK_DURATION.start_timer();
+
     let review: serde_json::Value = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(e) => {
@@ -627,5 +641,16 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("key file not found"));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_webhook_duration_metric_registered() {
+        LazyLock::force(&WEBHOOK_DURATION);
+        let families = WEBHOOK_REGISTRY.gather();
+        let names: Vec<&str> = families.iter().map(|f| f.get_name()).collect();
+        assert!(
+            names.contains(&"webhook_request_duration_seconds"),
+            "webhook_request_duration_seconds should be registered"
+        );
     }
 }

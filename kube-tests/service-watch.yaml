@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-devops-watch
+  namespace: kube-devops
+  labels:
+    app.kubernetes.io/name: kube-devops
+    app.kubernetes.io/component: watch
+spec:
+  selector:
+    app.kubernetes.io/name: kube-devops
+    app.kubernetes.io/component: watch
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

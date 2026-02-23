@@ -1,0 +1,369 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-devops-grafana-dashboard
+  namespace: kube-devops
+  labels:
+    app.kubernetes.io/name: kube-devops
+    grafana_dashboard: "1"
+data:
+  kube-devops.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "collapsed": false,
+          "id": 0,
+          "panels": [],
+          "title": "Overview",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            }
+          },
+          "id": 1,
+          "targets": [
+            {
+              "expr": "cluster_health_score",
+              "refId": "A"
+            }
+          ],
+          "title": "Cluster Health Score",
+          "type": "stat"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 2,
+          "targets": [
+            {
+              "expr": "rate(devopspolicy_reconcile_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Reconcile Cycles",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 3,
+          "targets": [
+            {
+              "expr": "rate(webhook_requests_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Webhook Requests",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "id": 4,
+          "panels": [],
+          "title": "Watch",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 5,
+          "targets": [
+            {
+              "expr": "namespace_health_score",
+              "refId": "A"
+            }
+          ],
+          "title": "Namespace Health Scores",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 6,
+          "targets": [
+            {
+              "expr": "rate(pod_events_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Pod Events Rate",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            }
+          },
+          "id": 7,
+          "targets": [
+            {
+              "expr": "pods_tracked_total",
+              "refId": "A"
+            }
+          ],
+          "title": "Pods Tracked",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "id": 8,
+          "panels": [],
+          "title": "Reconcile",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 9,
+          "targets": [
+            {
+              "expr": "devopspolicy_violations_total",
+              "refId": "A"
+            }
+          ],
+          "title": "Violations by Namespace",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 10,
+          "targets": [
+            {
+              "expr": "devopspolicy_health_score",
+              "refId": "A"
+            }
+          ],
+          "title": "Health Scores",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 11,
+          "targets": [
+            {
+              "expr": "rate(devopspolicy_reconcile_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Reconcile Rate",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 12,
+          "targets": [
+            {
+              "expr": "rate(devopspolicy_reconcile_errors_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Reconcile Errors",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 13,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, rate(devopspolicy_reconcile_duration_seconds_bucket[5m]))",
+              "refId": "A"
+            }
+          ],
+          "title": "Reconcile Duration",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            }
+          },
+          "id": 14,
+          "targets": [
+            {
+              "expr": "devopspolicy_pods_scanned_total",
+              "refId": "A"
+            }
+          ],
+          "title": "Pods Scanned",
+          "type": "stat"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 15,
+          "targets": [
+            {
+              "expr": "rate(devopspolicy_remediations_applied_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Remediations Applied",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 16,
+          "targets": [
+            {
+              "expr": "rate(devopspolicy_remediations_failed_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Remediations Failed",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 80
+                  }
+                ]
+              }
+            }
+          },
+          "id": 17,
+          "targets": [
+            {
+              "expr": "devopspolicy_enforcement_mode",
+              "refId": "A"
+            }
+          ],
+          "title": "Enforcement Mode",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "id": 18,
+          "panels": [],
+          "title": "Webhook",
+          "type": "row"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 19,
+          "targets": [
+            {
+              "expr": "rate(webhook_requests_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Allow/Deny Rate",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 20,
+          "targets": [
+            {
+              "expr": "rate(webhook_denials_total[5m])",
+              "refId": "A"
+            }
+          ],
+          "title": "Denial Breakdown",
+          "type": "timeseries"
+        },
+        {
+          "fieldConfig": {
+            "defaults": {}
+          },
+          "id": 21,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, rate(webhook_request_duration_seconds_bucket[5m]))",
+              "refId": "A"
+            }
+          ],
+          "title": "Request Latency",
+          "type": "timeseries"
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": [
+        "kubernetes",
+        "kube-devops"
+      ],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "title": "kube-devops Observability",
+      "uid": "kube-devops-overview",
+      "version": 1
+    }

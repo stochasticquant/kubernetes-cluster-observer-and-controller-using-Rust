@@ -67,6 +67,13 @@ static POD_EVENTS: LazyLock<IntCounter> = LazyLock::new(|| {
     c
 });
 
+static PODS_TRACKED: LazyLock<IntGauge> = LazyLock::new(|| {
+    let g = IntGauge::new("pods_tracked_total", "Total pods currently tracked by the watch controller")
+        .expect("metric definition is valid");
+    REGISTRY.register(Box::new(g.clone())).expect("metric not yet registered");
+    g
+});
+
 /* ============================= STATE ============================= */
 
 pub(crate) struct NamespaceState {
@@ -392,6 +399,7 @@ async fn watch_loop(
                     }
 
                     update_prometheus_metrics(&state);
+                    PODS_TRACKED.set(pod_store.len() as i64);
                 }
             }
         }
@@ -554,5 +562,16 @@ mod tests {
 
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_pods_tracked_metric_registered() {
+        LazyLock::force(&PODS_TRACKED);
+        let families = REGISTRY.gather();
+        let names: Vec<&str> = families.iter().map(|f| f.get_name()).collect();
+        assert!(
+            names.contains(&"pods_tracked_total"),
+            "pods_tracked_total should be registered"
+        );
     }
 }

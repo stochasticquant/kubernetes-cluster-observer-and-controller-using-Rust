@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-devops-reconcile
+  namespace: kube-devops
+  labels:
+    app.kubernetes.io/name: kube-devops
+    app.kubernetes.io/component: reconcile
+    release: stable
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-devops
+      app.kubernetes.io/component: reconcile
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scheme: http

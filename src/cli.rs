@@ -43,6 +43,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: WebhookAction,
     },
+
+    /// Generate observability manifests (Services, ServiceMonitors, Grafana dashboard)
+    Observability {
+        #[command(subcommand)]
+        action: ObservabilityAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -86,4 +92,17 @@ pub enum CrdAction {
 
     /// Install the CRD into the connected cluster
     Install,
+}
+
+#[derive(Subcommand)]
+#[allow(clippy::enum_variant_names)]
+pub enum ObservabilityAction {
+    /// Print all observability manifests (Services + ServiceMonitors + Grafana dashboard)
+    GenerateAll,
+
+    /// Print only ServiceMonitor manifests
+    GenerateServiceMonitors,
+
+    /// Print only the Grafana dashboard ConfigMap
+    GenerateDashboard,
 }

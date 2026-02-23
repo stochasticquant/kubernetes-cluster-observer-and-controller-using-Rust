@@ -1,13 +1,19 @@
+use std::net::SocketAddr;
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::get;
+use axum::Router;
 use futures::StreamExt;
 use kube::api::{Api, Patch, PatchParams};
 use kube::runtime::controller::{Action, Controller};
 use kube::{Client, ResourceExt};
 use k8s_openapi::api::core::v1::Pod;
-use prometheus::{IntCounter, IntGaugeVec, Registry};
+use prometheus::{Encoder, Histogram, IntCounter, IntGaugeVec, Registry, TextEncoder};
+use tokio::sync::{broadcast, Mutex};
 use tokio::signal;
 use tracing::{info, warn};
 
@@ -117,6 +123,36 @@ static ENFORCEMENT_MODE: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     g
 });
 
+static PODS_SCANNED: LazyLock<IntCounter> = LazyLock::new(|| {
+    let c = IntCounter::new(
+        "devopspolicy_pods_scanned_total",
+        "Total pods scanned across all reconciliation cycles",
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(c.clone()))
+        .expect("metric not yet registered");
+    c
+});
+
+static RECONCILE_DURATION: LazyLock<Histogram> = LazyLock::new(|| {
+    let h = Histogram::with_opts(prometheus::HistogramOpts::new(
+        "devopspolicy_reconcile_duration_seconds",
+        "Duration of each reconciliation cycle in seconds",
+    ))
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(h.clone()))
+        .expect("metric not yet registered");
+    h
+});
+
+/* ============================= STATE ============================= */
+
+pub(crate) struct ReconcileState {
+    pub(crate) ready: bool,
+}
+
 /* ============================= CONTEXT ============================= */
 
 struct ReconcileContext {
@@ -160,27 +196,63 @@ pub async fn run() -> Result<()> {
     LazyLock::force(&REMEDIATIONS_APPLIED);
     LazyLock::force(&REMEDIATIONS_FAILED);
     LazyLock::force(&ENFORCEMENT_MODE);
+    LazyLock::force(&PODS_SCANNED);
+    LazyLock::force(&RECONCILE_DURATION);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 9090));
 
     println!("  CRD watch ................... DevOpsPolicy.devops.stochastic.io/v1");
     println!("  Requeue interval ............ {}s", REQUEUE_INTERVAL.as_secs());
-    println!("\nOperator running. Press Ctrl+C to stop.\n");
+    println!("  Metrics server .............. http://{addr}");
+    println!();
+    println!("  Available endpoints:");
+    println!("    GET /healthz .............. Liveness probe (always 200 OK)");
+    println!("    GET /readyz ............... Readiness probe (503 until first reconcile, then 200)");
+    println!("    GET /metrics .............. Prometheus metrics scrape endpoint");
+    println!();
+    println!("Operator running. Press Ctrl+C to stop.\n");
     println!("{}", "=".repeat(70));
 
     info!("operator_controller_started");
 
+    let reconcile_state = Arc::new(Mutex::new(ReconcileState { ready: false }));
+
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+
+    let http_state = reconcile_state.clone();
+    let http_shutdown = shutdown_tx.subscribe();
+
+    let http_handle = tokio::spawn(async move {
+        start_metrics_server(http_state, http_shutdown, addr).await
+    });
+
+    let controller_state = reconcile_state.clone();
     let controller = Controller::new(policies, Default::default())
         .owns(pods, Default::default())
         .run(reconcile, error_policy, ctx)
-        .for_each(|result| async move {
-            match result {
-                Ok((_obj, _action)) => {}
-                Err(e) => {
-                    warn!(error = %e, "reconcile_dispatch_error");
-                    eprintln!("[ERROR] Reconcile dispatch: {e}");
+        .for_each(move |result| {
+            let state = controller_state.clone();
+            async move {
+                // Mark ready after first successful reconcile dispatch
+                {
+                    let mut s = state.lock().await;
+                    if !s.ready {
+                        s.ready = true;
+                    }
+                }
+                match result {
+                    Ok((_obj, _action)) => {}
+                    Err(e) => {
+                        warn!(error = %e, "reconcile_dispatch_error");
+                        eprintln!("[ERROR] Reconcile dispatch: {e}");
+                    }
                 }
             }
         });
 
+    // Use select! so Ctrl+C drops (cancels) the controller stream.
+    // The kube Controller has no built-in shutdown hook, so dropping
+    // the future is the only way to stop it cleanly.
     tokio::select! {
         _ = controller => {
             info!("operator_controller_stream_ended");
@@ -193,6 +265,10 @@ pub async fn run() -> Result<()> {
             println!("{}", "=".repeat(70));
         }
     }
+
+    // Signal the HTTP server to shut down
+    let _ = shutdown_tx.send(());
+    let _ = http_handle.await?;
 
     info!("operator_stopped");
     println!("Operator stopped.");
@@ -218,10 +294,23 @@ async fn reconcile(
         == generation;
 
     if already_reconciled {
+        info!(
+            policy = %name,
+            namespace = %namespace,
+            generation = ?generation,
+            "reconcile_skip_unchanged"
+        );
+        println!(
+            "[{}] {namespace}/{name}: unchanged (generation {:?}), requeue in {}s",
+            chrono::Utc::now().format("%H:%M:%S"),
+            generation,
+            REQUEUE_INTERVAL.as_secs()
+        );
         return Ok(Action::requeue(REQUEUE_INTERVAL));
     }
 
     RECONCILE_TOTAL.inc();
+    let _timer = RECONCILE_DURATION.start_timer();
 
     info!(
         policy = %name,
@@ -242,6 +331,8 @@ async fn reconcile(
     // ── List pods in the policy's namespace ──
     let pods_api: Api<Pod> = Api::namespaced(ctx.client.clone(), &namespace);
     let pod_list = pods_api.list(&Default::default()).await?;
+
+    PODS_SCANNED.inc_by(pod_list.items.len() as u64);
 
     // ── Evaluate pods against the policy spec ──
     let mut aggregate = governance::PodMetrics::default();
@@ -491,14 +582,78 @@ async fn handle_deletion(
     Ok(Action::await_change())
 }
 
+/* ============================= HTTP SERVER ============================= */
+
+pub(crate) fn build_reconcile_router(state: Arc<Mutex<ReconcileState>>) -> Router {
+    Router::new()
+        .route("/metrics", get(reconcile_metrics_handler))
+        .route("/healthz", get(|| async { (StatusCode::OK, "OK") }))
+        .route("/readyz", get({
+            let state = state.clone();
+            move || reconcile_ready_handler(state.clone())
+        }))
+}
+
+async fn start_metrics_server(
+    state: Arc<Mutex<ReconcileState>>,
+    mut shutdown: broadcast::Receiver<()>,
+    addr: SocketAddr,
+) -> Result<()> {
+    let app = build_reconcile_router(state);
+
+    let listener = tokio::net::TcpListener::bind(addr).await
+        .context("Failed to bind metrics server on :9090")?;
+
+    info!(addr = %addr, "reconcile_metrics_server_started");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown.recv().await;
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn reconcile_ready_handler(state: Arc<Mutex<ReconcileState>>) -> impl IntoResponse {
+    let state = state.lock().await;
+    if state.ready {
+        (StatusCode::OK, "READY")
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "NOT READY")
+    }
+}
+
+async fn reconcile_metrics_handler() -> impl IntoResponse {
+    let encoder = TextEncoder::new();
+    let metric_families = REGISTRY.gather();
+    let mut buffer = Vec::new();
+
+    match encoder.encode(&metric_families, &mut buffer) {
+        Ok(_) => match String::from_utf8(buffer) {
+            Ok(body) => (StatusCode::OK, body),
+            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "metrics encoding error".to_string()),
+        },
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "metrics encoding error".to_string()),
+    }
+}
+
 /* ============================= TESTS ============================= */
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
     use kube_devops::crd::DevOpsPolicySpec;
     use k8s_openapi::api::core::v1::{Container, ContainerStatus, PodSpec, PodStatus, Probe};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+    fn test_reconcile_state(ready: bool) -> Arc<Mutex<ReconcileState>> {
+        Arc::new(Mutex::new(ReconcileState { ready }))
+    }
 
     fn make_test_pod(
         name: &str,
@@ -786,5 +941,100 @@ mod tests {
             status: None,
         };
         assert!(policy.metadata.deletion_timestamp.is_none());
+    }
+
+    // ── HTTP endpoint tests ──
+
+    #[tokio::test]
+    async fn test_reconcile_healthz_returns_ok() {
+        let app = build_reconcile_router(test_reconcile_state(false));
+        let req = Request::builder()
+            .uri("/healthz")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"OK");
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_readyz_when_ready() {
+        let app = build_reconcile_router(test_reconcile_state(true));
+        let req = Request::builder()
+            .uri("/readyz")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"READY");
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_readyz_when_not_ready() {
+        let app = build_reconcile_router(test_reconcile_state(false));
+        let req = Request::builder()
+            .uri("/readyz")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&body[..], b"NOT READY");
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_metrics_returns_ok() {
+        let app = build_reconcile_router(test_reconcile_state(false));
+        let req = Request::builder()
+            .uri("/metrics")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_reconcile_unknown_route_returns_404() {
+        let app = build_reconcile_router(test_reconcile_state(false));
+        let req = Request::builder()
+            .uri("/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── New metric registry tests ──
+
+    #[test]
+    fn test_pods_scanned_metric_registered() {
+        LazyLock::force(&PODS_SCANNED);
+        let families = REGISTRY.gather();
+        let names: Vec<&str> = families.iter().map(|f| f.get_name()).collect();
+        assert!(
+            names.contains(&"devopspolicy_pods_scanned_total"),
+            "pods_scanned_total should be registered"
+        );
+    }
+
+    #[test]
+    fn test_reconcile_duration_metric_registered() {
+        LazyLock::force(&RECONCILE_DURATION);
+        let families = REGISTRY.gather();
+        let names: Vec<&str> = families.iter().map(|f| f.get_name()).collect();
+        assert!(
+            names.contains(&"devopspolicy_reconcile_duration_seconds"),
+            "reconcile_duration_seconds should be registered"
+        );
     }
 }

@@ -163,18 +163,25 @@ Rust featuring:
 
 ------------------------------------------------------------------------
 
-# OUTSTANDING ROADMAP ITEMS
+## Step 8 --- Prometheus Expansion (Completed)
+
+**Delivered:**
+- Reconcile metrics HTTP server on port 9090 (`/healthz`, `/readyz`, `/metrics`)
+- 4 new metrics: `devopspolicy_pods_scanned_total`, `devopspolicy_reconcile_duration_seconds`, `pods_tracked_total`, `webhook_request_duration_seconds`
+- 16 total Prometheus metrics across watch, reconcile, and webhook
+- Kubernetes Service manifests for all 3 components
+- ServiceMonitor manifests (`monitoring.coreos.com/v1`) for Prometheus auto-discovery
+- Grafana dashboard ConfigMap (22 panels, 4 rows, auto-imported by sidecar)
+- `observability` CLI subcommand: `generate-all`, `generate-service-monitors`, `generate-dashboard`
+- 7 static reference YAML manifests in `kube-tests/`
+
+**Test suite:** 207 tests (12 observability + 7 new metric/HTTP tests + 188 existing)
+
+**Status:** Fully implemented
 
 ------------------------------------------------------------------------
 
-## Step 8 --- Prometheus Expansion
-
-To Implement:
-- ServiceMonitor
-- Grafana dashboard
-- Extended metrics for enforcement and admission
-
-Impact: Enterprise observability layer
+# OUTSTANDING ROADMAP ITEMS
 
 ------------------------------------------------------------------------
 
@@ -207,7 +214,7 @@ Impact: Platform engineering maturity
 
 Successfully built:
 
-- Rust CLI (11 subcommands)
+- Rust CLI (14 subcommands)
 - Kubernetes client (async, RBAC-aware)
 - Governance scoring engine (weighted, policy-aware)
 - Real-time watch controller (Watch API, incremental state)
@@ -215,11 +222,13 @@ Successfully built:
 - Policy enforcement (audit/enforce, auto-patch workloads)
 - Validating Admission Webhook (HTTPS, TLS, fail-open)
 - Leader election (Lease API)
-- Prometheus metrics (watch + operator + webhook registries)
-- HTTP/HTTPS health endpoints (`/healthz`, `/readyz`, `/metrics`)
+- Prometheus metrics (16 metrics across watch + operator + webhook)
+- HTTP/HTTPS health endpoints on all components (:8080, :9090, :8443)
+- Kubernetes ServiceMonitor manifests for Prometheus auto-discovery
+- Grafana dashboard ConfigMap with 22 panels
 - Graceful shutdown (watch, reconcile, and webhook modes)
 - Structured JSON logging (`tracing`)
-- Comprehensive test suite (186 tests, no cluster required)
+- Comprehensive test suite (207 tests, no cluster required)
 
 ------------------------------------------------------------------------
 
@@ -231,39 +240,40 @@ Successfully built:
 | Unit (lib) | `src/governance.rs` | 48 | Namespace filter, pod evaluation, violation detection, metrics, scoring, policy-aware evaluation |
 | Unit (lib) | `src/crd.rs` | 18 | CRD schema, serialization, enforcement types, backward compatibility |
 | Unit (lib) | `src/enforcement.rs` | 30 | Owner resolution, probe/resource building, plan generation, patch construction |
-| Unit (lib) | Total library | 112+ | Combined admission + governance + CRD + enforcement |
-| Unit (bin) | `src/commands/watch.rs` | 5 | healthz, readyz, metrics, 404 handling |
-| Unit (bin) | `src/commands/reconcile.rs` | 13 | Aggregation, finalizers, deletion, status, system ns filtering |
-| Unit (bin) | `src/commands/webhook.rs` | 8 | Admission response, cert generation, TLS validation, config output |
-| Unit (bin) | Total binary | 26 | Combined watch + reconcile + webhook |
+| Unit (lib) | Total library | 112 | Combined admission + governance + CRD + enforcement |
+| Unit (bin) | `src/commands/watch.rs` | 6 | healthz, readyz, metrics, 404 handling, pods_tracked metric |
+| Unit (bin) | `src/commands/reconcile.rs` | 20 | Aggregation, finalizers, deletion, status, HTTP endpoints, new metrics |
+| Unit (bin) | `src/commands/webhook.rs` | 9 | Admission response, cert generation, TLS validation, duration metric |
+| Unit (bin) | `src/commands/observability.rs` | 12 | Services, ServiceMonitors, Grafana dashboard, YAML validation |
+| Unit (bin) | Total binary | 47 | Combined watch + reconcile + webhook + observability |
 | Integration | `tests/admission_integration.rs` | 12 | Full admission pipeline, fail-open, multi-container, runtime check skip |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema |
 | Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection |
-| **Total** | | **186** | **All passing, no cluster required** |
+| **Total** | | **207** | **All passing, no cluster required** |
 
 ------------------------------------------------------------------------
 
 # NEXT RECOMMENDED MILESTONE
 
-**Step 8 --- Prometheus Expansion**
+**Step 9 --- High Availability & Production Hardening**
 
-Expand observability with ServiceMonitor CRDs, Grafana dashboards,
-and extended metrics for enforcement and admission pipelines.
+Multi-replica deployment, PodDisruptionBudget, container image hardening,
+and Helm chart for production-grade controller deployment.
 
 ------------------------------------------------------------------------
 
 # SUMMARY
 
-Current Completion Level: ~70% of full roadmap
+Current Completion Level: ~80% of full roadmap
 
-Steps 1-7 are complete. The project is now a full-featured Kubernetes
+Steps 1-8 are complete. The project is now a full-featured Kubernetes
 governance platform with CRD-driven policies, operator reconciliation,
-active enforcement, validating admission webhook, and comprehensive
-test coverage (186 tests).
+active enforcement, validating admission webhook, full Prometheus
+observability with Grafana dashboards, and comprehensive test coverage
+(207 tests).
 
 Remaining work focuses on:
-- Enterprise observability (Grafana dashboards)
 - HA & production hardening
 - Multi-cluster governance
 

@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-devops-watch
+  namespace: kube-devops
+  labels:
+    app.kubernetes.io/name: kube-devops
+    app.kubernetes.io/component: watch
+    release: stable
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-devops
+      app.kubernetes.io/component: watch
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scheme: http

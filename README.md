@@ -44,13 +44,13 @@ on building similar capabilities from scratch to deeply understand:
 
 ------------------------------------------------------------------------
 
-## Current Stage: Step 7 -- Admission Webhook
+## Current Stage: Step 8 -- Prometheus Expansion
 
-The project now includes **preventive control** via a Validating Admission Webhook —
-non-compliant Pods are **rejected before creation** in addition to detecting and
-remediating existing violations:
+The project now has **full production observability** with Prometheus metrics
+on all components, Kubernetes ServiceMonitor auto-discovery, and a Grafana
+dashboard:
 
--   Structured Rust CLI with 11 subcommands
+-   Structured Rust CLI with 14 subcommands
 -   `DevOpsPolicy` CRD (`devops.stochastic.io/v1`) for user-defined governance rules
 -   Controller reconciliation loop via `kube_runtime::Controller`
 -   Policy-aware pod evaluation (only checks what the policy enables)
@@ -64,16 +64,18 @@ remediating existing violations:
 -   Finalizer lifecycle management (`devops.stochastic.io/cleanup`)
 -   Kubernetes Watch API integration for real-time pod event streaming
 -   Weighted governance scoring engine with namespace-level health tracking
--   Prometheus metrics for watch, reconcile, and enforcement
--   HTTP health endpoints (`/healthz`, `/readyz`, `/metrics`)
+-   Prometheus metrics across all 3 components (16 metrics total)
+-   HTTP health endpoints on watch (:8080), reconcile (:9090), webhook (:8443)
 -   Leader election via Kubernetes Lease API for HA deployment
 -   Structured JSON logging via `tracing`
--   Graceful shutdown with `Ctrl+C` handling (both watch and reconcile modes)
+-   Graceful shutdown with `Ctrl+C` handling (watch, reconcile, and webhook modes)
 -   Validating Admission Webhook (HTTPS, TLS, self-signed cert generation)
 -   Admission checks: reject `:latest` tags, missing probes at creation time
 -   Fail-open design — webhook errors never block the cluster
 -   System namespace bypass — never blocks `kube-system`, `cert-manager`, etc.
--   Comprehensive test suite (186 tests)
+-   Kubernetes ServiceMonitor manifests for Prometheus auto-discovery
+-   Grafana dashboard ConfigMap with 22 panels across 4 rows
+-   Comprehensive test suite (207 tests)
 
 ### CLI Commands
 
@@ -90,6 +92,9 @@ kube-devops webhook serve # Start the admission webhook HTTPS server
 kube-devops webhook cert-generate   # Generate self-signed TLS certificates
 kube-devops webhook cert-generate --ip-san 192.168.1.26  # With IP SANs for dev
 kube-devops webhook install-config  # Print ValidatingWebhookConfiguration YAML
+kube-devops observability generate-all              # Print all observability manifests
+kube-devops observability generate-service-monitors # Print ServiceMonitor manifests
+kube-devops observability generate-dashboard        # Print Grafana dashboard ConfigMap
 ```
 
 ------------------------------------------------------------------------
@@ -104,7 +109,7 @@ kube-devops/
  ├── src/
  │   ├── main.rs              # Entry point, async runtime, command routing
  │   ├── lib.rs               # Library crate: exports admission + crd + governance + enforcement
- │   ├── cli.rs               # clap CLI definition (11 subcommands)
+ │   ├── cli.rs               # clap CLI definition (14 subcommands)
  │   ├── admission.rs         # Pure admission validation logic
  │   ├── crd.rs               # DevOpsPolicy CRD definition (spec + status)
  │   ├── enforcement.rs       # Policy enforcement: owner resolution, remediation, patching
@@ -117,8 +122,9 @@ kube-devops/
  │        ├── analyze.rs      # One-shot governance analysis
  │        ├── watch.rs        # Watch controller, HTTP server, leader election
  │        ├── crd.rs          # CRD generate/install commands
- │        ├── reconcile.rs    # Operator reconcile loop, finalizers, metrics
- │        └── webhook.rs      # Admission webhook HTTPS server, cert gen, config
+ │        ├── reconcile.rs    # Operator reconcile loop, finalizers, metrics, HTTP server (:9090)
+ │        ├── webhook.rs      # Admission webhook HTTPS server, cert gen, config
+ │        └── observability.rs # Service, ServiceMonitor, Grafana dashboard generators
  ├── tests/
  │   ├── common/
  │   │   └── mod.rs                  # Shared test pod builder helper
@@ -129,7 +135,14 @@ kube-devops/
  ├── kube-tests/
  │   ├── test-pod.yaml               # Test pod manifest
  │   ├── sample-devopspolicy.yaml    # Example DevOpsPolicy CR
- │   └── webhook-config.yaml         # ValidatingWebhookConfiguration template
+ │   ├── webhook-config.yaml         # ValidatingWebhookConfiguration template
+ │   ├── service-watch.yaml          # Watch Service manifest
+ │   ├── service-reconcile.yaml      # Reconcile Service manifest
+ │   ├── service-webhook.yaml        # Webhook Service manifest
+ │   ├── servicemonitor-watch.yaml   # Watch ServiceMonitor
+ │   ├── servicemonitor-reconcile.yaml # Reconcile ServiceMonitor
+ │   ├── servicemonitor-webhook.yaml # Webhook ServiceMonitor
+ │   └── grafana-dashboard-configmap.yaml # Grafana dashboard ConfigMap
  └── docs/
      ├── Step_1_Code_Explanation.md
      ├── Step_2_Kubernetes_Integration.md
@@ -139,6 +152,7 @@ kube-devops/
      ├── Step_4_Testing.md
      ├── Step_5_Kubernetes_Operator.md
      ├── Step_6_Policy_Enforcement.md
+     ├── Step_8_Prometheus_Expansion.md
      ├── Kubernetes_Observability_Controller_Progress.md
      ├── Kubernetes_Observability_Policy_Controller_Roadmap.md
      ├── Rust_Foundations_for_Kubernetes_DevOps.md
@@ -150,7 +164,7 @@ kube-devops/
 
 | Subsystem | File | Description |
 |---|---|---|
-| CLI | `cli.rs` | clap-based command parsing with 11 subcommands |
+| CLI | `cli.rs` | clap-based command parsing with 14 subcommands |
 | Admission | `admission.rs` | Pure admission validation logic (policy-driven, fail-open) |
 | CRD | `crd.rs` | DevOpsPolicy CRD definition with spec + status + enforcement types |
 | Governance Engine | `governance.rs` | Pod evaluation, violation detection, policy-aware checks, weighted scoring |
@@ -159,8 +173,9 @@ kube-devops/
 | Watch Controller | `commands/watch.rs` | Kubernetes Watch API stream processing, incremental state updates |
 | Admission Webhook | `commands/webhook.rs` | HTTPS server, TLS cert generation, webhook config |
 | Leader Election | `commands/watch.rs` | Lease-based leader election for HA multi-replica deployment |
-| HTTP Server | `commands/watch.rs` | axum server exposing `/healthz`, `/readyz`, `/metrics` |
-| Prometheus | `commands/watch.rs`, `commands/reconcile.rs`, `commands/webhook.rs` | Metrics for watch, reconcile, enforcement, and admission |
+| Observability | `commands/observability.rs` | Service, ServiceMonitor, Grafana dashboard generators |
+| HTTP Server | `commands/watch.rs`, `commands/reconcile.rs` | axum servers exposing `/healthz`, `/readyz`, `/metrics` |
+| Prometheus | `commands/watch.rs`, `commands/reconcile.rs`, `commands/webhook.rs` | 16 metrics across watch, reconcile, enforcement, and admission |
 | Logging | `main.rs` | Structured JSON logging via `tracing` + `tracing-subscriber` |
 
 ### Governance Scoring
@@ -245,6 +260,9 @@ cargo run -- webhook serve --tls-cert tls.crt --tls-key tls.key
 cargo run -- webhook cert-generate
 cargo run -- webhook cert-generate --ip-san 192.168.1.26
 cargo run -- webhook install-config --ca-bundle-path ca.crt
+cargo run -- observability generate-all
+cargo run -- observability generate-service-monitors
+cargo run -- observability generate-dashboard
 ```
 
 Using the compiled binary directly:
@@ -262,6 +280,9 @@ Using the compiled binary directly:
 ./target/debug/kube-devops webhook cert-generate
 ./target/debug/kube-devops webhook cert-generate --ip-san 192.168.1.26
 ./target/debug/kube-devops webhook install-config --ca-bundle-path ca.crt
+./target/debug/kube-devops observability generate-all
+./target/debug/kube-devops observability generate-service-monitors
+./target/debug/kube-devops observability generate-dashboard
 ```
 
 ------------------------------------------------------------------------
@@ -278,6 +299,14 @@ The `reconcile` command starts the DevOpsPolicy operator:
 The operator continuously evaluates pods against each DevOpsPolicy and
 updates the CR's `.status` with health score, violations, and classification.
 Press **Ctrl+C** for graceful shutdown.
+
+Endpoints available while running (port 9090):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /healthz` | Liveness probe (always 200 OK) |
+| `GET /readyz` | Readiness probe (503 until first reconcile, then 200) |
+| `GET /metrics` | Prometheus metrics scrape endpoint (9 metrics) |
 
 ------------------------------------------------------------------------
 
@@ -338,18 +367,19 @@ Endpoints available while running:
 
 ## Testing
 
-The project includes 186 automated tests that run without a Kubernetes
+The project includes 207 automated tests that run without a Kubernetes
 cluster. All Pod and CRD objects are constructed synthetically in-memory.
 
 ``` bash
-cargo test                                       # Full suite (186 tests)
+cargo test                                       # Full suite (207 tests)
 cargo test --lib admission::tests                # Admission unit tests (16)
 cargo test --lib governance::tests               # Governance unit tests (48)
 cargo test --lib crd::tests                      # CRD unit tests (18)
 cargo test --lib enforcement::tests              # Enforcement unit tests (30)
-cargo test --lib commands::watch::tests          # HTTP endpoint tests (5)
-cargo test --lib commands::reconcile::tests      # Reconcile unit tests (13)
-cargo test --lib commands::webhook::tests        # Webhook unit tests (8)
+cargo test --lib commands::watch::tests          # HTTP endpoint + metrics tests (6)
+cargo test --lib commands::reconcile::tests      # Reconcile + HTTP endpoint tests (20)
+cargo test --lib commands::webhook::tests        # Webhook unit tests (9)
+cargo test --lib commands::observability::tests  # Observability manifest tests (12)
 cargo test --test admission_integration          # Admission integration tests (12)
 cargo test --test governance_integration         # Governance integration tests (6)
 cargo test --test operator_integration           # Operator integration tests (13)
@@ -362,15 +392,16 @@ cargo test --test enforcement_integration        # Enforcement integration tests
 | Unit (lib) | `src/governance.rs` | 48 | Namespace filter, pod evaluation, violation detection, metrics, scoring, policy-aware evaluation |
 | Unit (lib) | `src/crd.rs` | 18 | CRD schema, serialization, enforcement types, backward compatibility |
 | Unit (lib) | `src/enforcement.rs` | 30 | Owner resolution, probe/resource building, plan generation, patch construction |
-| Unit (bin) | `src/commands/watch.rs` | 5 | healthz, readyz (ready/not-ready), metrics, 404 handling |
-| Unit (bin) | `src/commands/reconcile.rs` | 13 | Aggregation, finalizers, deletion, status computation, system ns filtering |
-| Unit (bin) | `src/commands/webhook.rs` | 8 | Admission response, cert generation, TLS validation, config output |
+| Unit (bin) | `src/commands/watch.rs` | 6 | healthz, readyz, metrics, 404 handling, pods_tracked metric |
+| Unit (bin) | `src/commands/reconcile.rs` | 20 | Aggregation, finalizers, deletion, status, HTTP endpoints, new metrics |
+| Unit (bin) | `src/commands/webhook.rs` | 9 | Admission response, cert generation, TLS validation, duration metric |
+| Unit (bin) | `src/commands/observability.rs` | 12 | Services, ServiceMonitors, Grafana dashboard, YAML validation |
 | Integration | `tests/admission_integration.rs` | 12 | Full admission pipeline, fail-open, multi-container, runtime check skip |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline from pod to health classification |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema round-trip |
 | Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection, deduplication |
 
-See `docs/Step_4_Testing.md`, `docs/Step_5_Kubernetes_Operator.md`, and `docs/Step_7_Admission_Webhook.md` for full test documentation.
+See `docs/Step_4_Testing.md`, `docs/Step_5_Kubernetes_Operator.md`, `docs/Step_7_Admission_Webhook.md`, and `docs/Step_8_Prometheus_Expansion.md` for full test documentation.
 
 ------------------------------------------------------------------------
 
@@ -462,12 +493,12 @@ Open Pull Request -> Merge into main.
 | 5 | Kubernetes Operator (DevOpsPolicy CRD, reconciliation loop, finalizers, policy-aware evaluation, 98 tests) | Done |
 | 6 | Policy enforcement mode (audit/enforce, auto-patch workloads, inject probes+limits, 144+ tests) | Done |
 | 7 | Admission webhook (HTTPS, TLS, self-signed certs, fail-open, system ns bypass, 186 tests) | Done |
+| 8 | Prometheus expansion (metrics HTTP server, ServiceMonitors, Grafana dashboard, 207 tests) | Done |
 
 ## Roadmap
 
 | Step | Milestone | Status |
 |---|---|---|
-| 8 | Prometheus expansion (ServiceMonitor, Grafana dashboards) | Planned |
 | 9 | High availability & production hardening | Planned |
 | 10 | Multi-cluster governance & policy bundles | Planned |
 
@@ -504,6 +535,7 @@ This project serves as a platform engineering laboratory using a real
 | `docs/Step_5_Kubernetes_Operator.md` | CRD, reconciliation loop, finalizers, operator architecture |
 | `docs/Step_6_Policy_Enforcement.md` | Enforcement mode, remediation planning, patching architecture |
 | `docs/Step_7_Admission_Webhook.md` | Admission webhook, TLS, fail-open design, CLI commands |
+| `docs/Step_8_Prometheus_Expansion.md` | Metrics expansion, ServiceMonitors, Grafana dashboard |
 | `docs/Kubernetes_Observability_Controller_Progress.md` | Implementation progress tracker |
 | `docs/Kubernetes_Observability_Policy_Controller_Roadmap.md` | Full 10-step roadmap |
 | `docs/Rust_Foundations_for_Kubernetes_DevOps.md` | Rust language foundations reference |
