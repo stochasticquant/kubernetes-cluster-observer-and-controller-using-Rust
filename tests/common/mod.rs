@@ -3,6 +3,7 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
 
+#[allow(dead_code)]
 pub fn make_test_pod(
     name: &str,
     namespace: &str,

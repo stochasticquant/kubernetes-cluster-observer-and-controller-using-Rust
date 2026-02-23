@@ -37,6 +37,46 @@ pub enum Commands {
 
     /// Start the DevOpsPolicy operator reconcile loop
     Reconcile,
+
+    /// Manage the admission webhook
+    Webhook {
+        #[command(subcommand)]
+        action: WebhookAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WebhookAction {
+    /// Start the admission webhook HTTPS server
+    Serve {
+        #[arg(long, default_value = "0.0.0.0:8443")]
+        addr: String,
+        #[arg(long, default_value = "tls.crt")]
+        tls_cert: String,
+        #[arg(long, default_value = "tls.key")]
+        tls_key: String,
+    },
+    /// Generate self-signed TLS certificates for development
+    CertGenerate {
+        #[arg(long, default_value = "kube-devops-webhook")]
+        service_name: String,
+        #[arg(long, default_value = "default")]
+        namespace: String,
+        #[arg(long, default_value = ".")]
+        output_dir: String,
+        /// Additional IP SANs (e.g. --ip-san 192.168.1.26)
+        #[arg(long = "ip-san")]
+        ip_sans: Vec<String>,
+    },
+    /// Print the ValidatingWebhookConfiguration YAML
+    InstallConfig {
+        #[arg(long, default_value = "kube-devops-webhook")]
+        service_name: String,
+        #[arg(long, default_value = "default")]
+        namespace: String,
+        #[arg(long)]
+        ca_bundle_path: String,
+    },
 }
 
 #[derive(Subcommand)]

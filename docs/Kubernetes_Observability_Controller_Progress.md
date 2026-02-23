@@ -141,19 +141,29 @@ Rust featuring:
 
 ------------------------------------------------------------------------
 
-# OUTSTANDING ROADMAP ITEMS
+## Step 7 --- Admission Webhook (Completed)
+
+**Delivered:**
+- Validating Admission Webhook with HTTPS server (port 8443)
+- Self-signed TLS certificate generation via `rcgen` (with optional IP SANs for dev)
+- Policy-driven admission checks: reject `:latest` tags, missing probes
+- Fail-open design — errors never block the cluster
+- System namespace bypass via `governance::is_system_namespace()`
+- Runtime-only checks (restarts, pending) automatically skipped at admission
+- Pure admission validation module (`src/admission.rs`)
+- Webhook HTTPS server with TLS (`src/commands/webhook.rs`)
+- CLI: `webhook serve`, `webhook cert-generate`, `webhook install-config`
+- ValidatingWebhookConfiguration YAML template
+- Prometheus metrics: `webhook_requests_total`, `webhook_denials_total`
+- HTTP endpoints: `/validate`, `/healthz`, `/readyz`, `/metrics`
+
+**Test suite:** 186 tests (16 admission unit + 8 webhook unit + 12 admission integration + 150 existing)
+
+**Status:** Fully implemented
 
 ------------------------------------------------------------------------
 
-## Step 7 --- Admission Webhook
-
-To Implement:
-- HTTPS server with TLS
-- Kubernetes ValidatingWebhookConfiguration
-- Reject pods at admission time
-- Policy-based denial logic
-
-Impact: API-server level governance
+# OUTSTANDING ROADMAP ITEMS
 
 ------------------------------------------------------------------------
 
@@ -197,17 +207,19 @@ Impact: Platform engineering maturity
 
 Successfully built:
 
-- Rust CLI (8 subcommands)
+- Rust CLI (11 subcommands)
 - Kubernetes client (async, RBAC-aware)
 - Governance scoring engine (weighted, policy-aware)
 - Real-time watch controller (Watch API, incremental state)
 - Kubernetes Operator (CRD, reconciliation loop, finalizers)
+- Policy enforcement (audit/enforce, auto-patch workloads)
+- Validating Admission Webhook (HTTPS, TLS, fail-open)
 - Leader election (Lease API)
-- Prometheus metrics (watch + operator registries)
-- HTTP health endpoints (`/healthz`, `/readyz`, `/metrics`)
-- Graceful shutdown (both watch and reconcile modes)
+- Prometheus metrics (watch + operator + webhook registries)
+- HTTP/HTTPS health endpoints (`/healthz`, `/readyz`, `/metrics`)
+- Graceful shutdown (watch, reconcile, and webhook modes)
 - Structured JSON logging (`tracing`)
-- Comprehensive test suite (98 tests, no cluster required)
+- Comprehensive test suite (186 tests, no cluster required)
 
 ------------------------------------------------------------------------
 
@@ -215,45 +227,48 @@ Successfully built:
 
 | Test Layer | Location | Count | Scope |
 |---|---|---|---|
+| Unit (lib) | `src/admission.rs` | 16 | Verdict logic, policy filtering, denial messages, multi-container |
 | Unit (lib) | `src/governance.rs` | 48 | Namespace filter, pod evaluation, violation detection, metrics, scoring, policy-aware evaluation |
 | Unit (lib) | `src/crd.rs` | 18 | CRD schema, serialization, enforcement types, backward compatibility |
 | Unit (lib) | `src/enforcement.rs` | 30 | Owner resolution, probe/resource building, plan generation, patch construction |
-| Unit (lib) | Total library | 96+ | Combined governance + CRD + enforcement |
+| Unit (lib) | Total library | 112+ | Combined admission + governance + CRD + enforcement |
 | Unit (bin) | `src/commands/watch.rs` | 5 | healthz, readyz, metrics, 404 handling |
 | Unit (bin) | `src/commands/reconcile.rs` | 13 | Aggregation, finalizers, deletion, status, system ns filtering |
-| Unit (bin) | Total binary | 18 | Combined watch + reconcile |
+| Unit (bin) | `src/commands/webhook.rs` | 8 | Admission response, cert generation, TLS validation, config output |
+| Unit (bin) | Total binary | 26 | Combined watch + reconcile + webhook |
+| Integration | `tests/admission_integration.rs` | 12 | Full admission pipeline, fail-open, multi-container, runtime check skip |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema |
 | Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection |
-| **Total** | | **144+** | **All passing, no cluster required** |
+| **Total** | | **186** | **All passing, no cluster required** |
 
 ------------------------------------------------------------------------
 
 # NEXT RECOMMENDED MILESTONE
 
-**Step 7 --- Admission Webhook**
+**Step 8 --- Prometheus Expansion**
 
-Prevent non-compliant workloads from being created. Build an HTTPS
-admission webhook that rejects pods at creation time based on policy rules.
+Expand observability with ServiceMonitor CRDs, Grafana dashboards,
+and extended metrics for enforcement and admission pipelines.
 
 ------------------------------------------------------------------------
 
 # SUMMARY
 
-Current Completion Level: ~60% of full roadmap
+Current Completion Level: ~70% of full roadmap
 
-Steps 1-6 are complete. The project is now a true Kubernetes Operator
-with CRD-driven governance, reconciliation loop, finalizers, active
-policy enforcement, and comprehensive test coverage (144+ tests).
+Steps 1-7 are complete. The project is now a full-featured Kubernetes
+governance platform with CRD-driven policies, operator reconciliation,
+active enforcement, validating admission webhook, and comprehensive
+test coverage (186 tests).
 
 Remaining work focuses on:
-- Admission control (rejecting at creation time)
 - Enterprise observability (Grafana dashboards)
 - HA & production hardening
 - Multi-cluster governance
 
 ------------------------------------------------------------------------
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-23
 
 End of Status Document
