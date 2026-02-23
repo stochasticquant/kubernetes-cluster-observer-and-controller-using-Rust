@@ -48,3 +48,10 @@
 
 # Windows
 Thumbs.db
+
+# =========================
+# Generated TLS certificates
+# =========================
+ca.crt
+tls.crt
+tls.key
