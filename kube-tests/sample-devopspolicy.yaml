@@ -1,0 +1,11 @@
+apiVersion: devops.stochastic.io/v1
+kind: DevOpsPolicy
+metadata:
+  name: default-policy
+  namespace: production
+spec:
+  forbidLatestTag: true
+  requireLivenessProbe: true
+  requireReadinessProbe: true
+  maxRestartCount: 3
+  forbidPendingDuration: 300
