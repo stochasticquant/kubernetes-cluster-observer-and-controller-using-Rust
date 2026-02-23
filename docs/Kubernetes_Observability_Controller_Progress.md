@@ -120,17 +120,28 @@ Rust featuring:
 
 ------------------------------------------------------------------------
 
+## Step 6 --- Policy Enforcement Mode (Completed)
+
+**Delivered:**
+- Enforcement mode (`audit` / `enforce`) on DevOpsPolicy CRD
+- Automatic remediation: patches Deployments, StatefulSets, DaemonSets
+- Patchable violations: missing probes, missing resource limits
+- Non-patchable violations remain detection-only (`:latest`, high restarts, pending)
+- System namespace protection (never enforce in `kube-system`, `cert-manager`, etc.)
+- Annotation audit trail (`devops.stochastic.io/patched-by`)
+- Workload deduplication per reconcile cycle
+- Prometheus enforcement metrics (applied, failed, mode)
+- Status sub-resource with remediation counts and workload list
+- Enforcement module with 30 unit tests + 8 integration tests
+- Full backward compatibility (audit by default)
+
+**Test suite:** 144+ tests (30 enforcement unit + 8 enforcement integration + 98 existing + 8 new CRD tests)
+
+**Status:** Fully implemented
+
+------------------------------------------------------------------------
+
 # OUTSTANDING ROADMAP ITEMS
-
-## Step 6 --- Enforcement Mode
-
-To Implement:
-- Patch offending workloads
-- Inject missing resource limits
-- Enforce image tag policies
-- Controlled remediation logic
-
-Impact: Moves from observability to active governance
 
 ------------------------------------------------------------------------
 
@@ -205,36 +216,37 @@ Successfully built:
 | Test Layer | Location | Count | Scope |
 |---|---|---|---|
 | Unit (lib) | `src/governance.rs` | 48 | Namespace filter, pod evaluation, violation detection, metrics, scoring, policy-aware evaluation |
-| Unit (lib) | `src/crd.rs` | 10 | CRD schema, serialization, API group/version/kind, namespaced scope |
-| Unit (lib) | Total library | 61 | Combined governance + CRD |
+| Unit (lib) | `src/crd.rs` | 18 | CRD schema, serialization, enforcement types, backward compatibility |
+| Unit (lib) | `src/enforcement.rs` | 30 | Owner resolution, probe/resource building, plan generation, patch construction |
+| Unit (lib) | Total library | 96+ | Combined governance + CRD + enforcement |
 | Unit (bin) | `src/commands/watch.rs` | 5 | healthz, readyz, metrics, 404 handling |
 | Unit (bin) | `src/commands/reconcile.rs` | 13 | Aggregation, finalizers, deletion, status, system ns filtering |
 | Unit (bin) | Total binary | 18 | Combined watch + reconcile |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema |
-| **Total** | | **98** | **All passing, no cluster required** |
+| Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection |
+| **Total** | | **144+** | **All passing, no cluster required** |
 
 ------------------------------------------------------------------------
 
 # NEXT RECOMMENDED MILESTONE
 
-**Step 6 --- Policy Enforcement Mode**
+**Step 7 --- Admission Webhook**
 
-Move from detection to remediation. The operator will patch non-compliant
-workloads automatically (add resource limits, inject missing probes).
+Prevent non-compliant workloads from being created. Build an HTTPS
+admission webhook that rejects pods at creation time based on policy rules.
 
 ------------------------------------------------------------------------
 
 # SUMMARY
 
-Current Completion Level: ~55% of full roadmap
+Current Completion Level: ~60% of full roadmap
 
-Steps 1-5 are complete. The project is now a true Kubernetes Operator
-with CRD-driven governance, reconciliation loop, finalizers, and
-comprehensive test coverage.
+Steps 1-6 are complete. The project is now a true Kubernetes Operator
+with CRD-driven governance, reconciliation loop, finalizers, active
+policy enforcement, and comprehensive test coverage (144+ tests).
 
 Remaining work focuses on:
-- Policy enforcement (patching workloads)
 - Admission control (rejecting at creation time)
 - Enterprise observability (Grafana dashboards)
 - HA & production hardening

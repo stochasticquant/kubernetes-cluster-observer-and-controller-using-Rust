@@ -44,25 +44,31 @@ on building similar capabilities from scratch to deeply understand:
 
 ------------------------------------------------------------------------
 
-## Current Stage: Step 5 -- Kubernetes Operator with CRD
+## Current Stage: Step 6 -- Policy Enforcement Mode
 
-The project is now a **true Kubernetes Operator** with a Custom Resource
-Definition, reconciliation loop, and declarative policy management:
+The project is now a **true Kubernetes Operator** with policy enforcement —
+it can detect violations **and** automatically patch non-compliant workloads:
 
 -   Structured Rust CLI with 8 subcommands
 -   `DevOpsPolicy` CRD (`devops.stochastic.io/v1`) for user-defined governance rules
 -   Controller reconciliation loop via `kube_runtime::Controller`
 -   Policy-aware pod evaluation (only checks what the policy enables)
--   Status sub-resource updates with health score, violations, and timestamps
+-   **Policy enforcement mode** — automatically patch Deployments, StatefulSets,
+    and DaemonSets to inject missing probes and resource limits
+-   Audit mode (default) with zero mutations for backward compatibility
+-   System namespace protection (never enforce in `kube-system`, `cert-manager`, etc.)
+-   Annotation audit trail (`devops.stochastic.io/patched-by`) on patched workloads
+-   Workload deduplication — patches each parent workload only once per cycle
+-   Status sub-resource updates with health score, violations, and remediation counts
 -   Finalizer lifecycle management (`devops.stochastic.io/cleanup`)
 -   Kubernetes Watch API integration for real-time pod event streaming
 -   Weighted governance scoring engine with namespace-level health tracking
--   Prometheus metrics for both watch controller and operator reconciler
+-   Prometheus metrics for watch, reconcile, and enforcement
 -   HTTP health endpoints (`/healthz`, `/readyz`, `/metrics`)
 -   Leader election via Kubernetes Lease API for HA deployment
 -   Structured JSON logging via `tracing`
 -   Graceful shutdown with `Ctrl+C` handling (both watch and reconcile modes)
--   Comprehensive test suite (98 tests)
+-   Comprehensive test suite (144+ tests)
 
 ### CLI Commands
 
@@ -88,9 +94,10 @@ kube-devops/
  ├── rust-toolchain.toml
  ├── src/
  │   ├── main.rs              # Entry point, async runtime, command routing
- │   ├── lib.rs               # Library crate: exports crd + governance
+ │   ├── lib.rs               # Library crate: exports crd + governance + enforcement
  │   ├── cli.rs               # clap CLI definition (8 subcommands)
  │   ├── crd.rs               # DevOpsPolicy CRD definition (spec + status)
+ │   ├── enforcement.rs       # Policy enforcement: owner resolution, remediation, patching
  │   ├── governance.rs        # Scoring engine, pod evaluation, policy-aware checks
  │   └── commands/
  │        ├── mod.rs
@@ -104,6 +111,7 @@ kube-devops/
  ├── tests/
  │   ├── common/
  │   │   └── mod.rs                  # Shared test pod builder helper
+ │   ├── enforcement_integration.rs  # Enforcement pipeline tests
  │   ├── governance_integration.rs   # End-to-end governance pipeline tests
  │   └── operator_integration.rs     # Operator reconcile pipeline tests
  ├── kube-tests/
@@ -117,6 +125,7 @@ kube-devops/
      ├── Step_4_Detailed_Developer_Documentation.md
      ├── Step_4_Testing.md
      ├── Step_5_Kubernetes_Operator.md
+     ├── Step_6_Policy_Enforcement.md
      ├── Kubernetes_Observability_Controller_Progress.md
      ├── Kubernetes_Observability_Policy_Controller_Roadmap.md
      ├── Rust_Foundations_for_Kubernetes_DevOps.md
@@ -129,13 +138,14 @@ kube-devops/
 | Subsystem | File | Description |
 |---|---|---|
 | CLI | `cli.rs` | clap-based command parsing with 8 subcommands |
-| CRD | `crd.rs` | DevOpsPolicy CRD definition with spec + status |
+| CRD | `crd.rs` | DevOpsPolicy CRD definition with spec + status + enforcement types |
 | Governance Engine | `governance.rs` | Pod evaluation, violation detection, policy-aware checks, weighted scoring |
+| Enforcement Engine | `enforcement.rs` | Owner resolution, remediation planning, workload patching |
 | Operator Reconciler | `commands/reconcile.rs` | Controller reconcile loop, finalizers, status updates |
 | Watch Controller | `commands/watch.rs` | Kubernetes Watch API stream processing, incremental state updates |
 | Leader Election | `commands/watch.rs` | Lease-based leader election for HA multi-replica deployment |
 | HTTP Server | `commands/watch.rs` | axum server exposing `/healthz`, `/readyz`, `/metrics` |
-| Prometheus | `commands/watch.rs`, `commands/reconcile.rs` | Metrics for both watch and reconcile modes |
+| Prometheus | `commands/watch.rs`, `commands/reconcile.rs` | Metrics for watch, reconcile, and enforcement |
 | Logging | `main.rs` | Structured JSON logging via `tracing` + `tracing-subscriber` |
 
 ### Governance Scoring
@@ -274,27 +284,31 @@ Endpoints available while running:
 
 ## Testing
 
-The project includes 98 automated tests that run without a Kubernetes
+The project includes 144+ automated tests that run without a Kubernetes
 cluster. All Pod and CRD objects are constructed synthetically in-memory.
 
 ``` bash
-cargo test                                    # Full suite (98 tests)
-cargo test --lib governance::tests            # Governance unit tests (48)
-cargo test --lib crd::tests                   # CRD unit tests (10)
-cargo test --lib commands::watch::tests       # HTTP endpoint tests (5)
-cargo test --lib commands::reconcile::tests   # Reconcile unit tests (13)
-cargo test --test governance_integration      # Governance integration tests (6)
-cargo test --test operator_integration        # Operator integration tests (13)
+cargo test                                       # Full suite (144+ tests)
+cargo test --lib governance::tests               # Governance unit tests (48)
+cargo test --lib crd::tests                      # CRD unit tests (18)
+cargo test --lib enforcement::tests              # Enforcement unit tests (30)
+cargo test --lib commands::watch::tests          # HTTP endpoint tests (5)
+cargo test --lib commands::reconcile::tests      # Reconcile unit tests (13)
+cargo test --test governance_integration         # Governance integration tests (6)
+cargo test --test operator_integration           # Operator integration tests (13)
+cargo test --test enforcement_integration        # Enforcement integration tests (8)
 ```
 
 | Test Layer | Location | Count | Scope |
 |---|---|---|---|
 | Unit (lib) | `src/governance.rs` | 48 | Namespace filter, pod evaluation, violation detection, metrics, scoring, policy-aware evaluation |
-| Unit (lib) | `src/crd.rs` | 10 | CRD schema, serialization, API group/version/kind, namespaced scope |
+| Unit (lib) | `src/crd.rs` | 18 | CRD schema, serialization, enforcement types, backward compatibility |
+| Unit (lib) | `src/enforcement.rs` | 30 | Owner resolution, probe/resource building, plan generation, patch construction |
 | Unit (bin) | `src/commands/watch.rs` | 5 | healthz, readyz (ready/not-ready), metrics, 404 handling |
 | Unit (bin) | `src/commands/reconcile.rs` | 13 | Aggregation, finalizers, deletion, status computation, system ns filtering |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline from pod to health classification |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema round-trip |
+| Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection, deduplication |
 
 See `docs/Step_4_Testing.md` and `docs/Step_5_Kubernetes_Operator.md` for full test documentation.
 
@@ -382,12 +396,12 @@ Open Pull Request -> Merge into main.
 | 3 | DevOps governance analyzer (scoring engine, health classification) | Done |
 | 4 | Real-time watch engine (Watch API, leader election, Prometheus, HTTP endpoints, test suite) | Done |
 | 5 | Kubernetes Operator (DevOpsPolicy CRD, reconciliation loop, finalizers, policy-aware evaluation, 98 tests) | Done |
+| 6 | Policy enforcement mode (audit/enforce, auto-patch workloads, inject probes+limits, 144+ tests) | Done |
 
 ## Roadmap
 
 | Step | Milestone | Status |
 |---|---|---|
-| 6 | Policy enforcement mode (patch workloads, inject limits) | Planned |
 | 7 | Admission webhook (reject violations at creation time) | Planned |
 | 8 | Prometheus expansion (ServiceMonitor, Grafana dashboards) | Planned |
 | 9 | High availability & production hardening | Planned |
@@ -424,6 +438,7 @@ This project serves as a platform engineering laboratory using a real
 | `docs/Step_4_Detailed_Developer_Documentation.md` | Deep technical reference for Step 4 subsystems |
 | `docs/Step_4_Testing.md` | Test suite documentation (Step 4 tests) |
 | `docs/Step_5_Kubernetes_Operator.md` | CRD, reconciliation loop, finalizers, operator architecture |
+| `docs/Step_6_Policy_Enforcement.md` | Enforcement mode, remediation planning, patching architecture |
 | `docs/Kubernetes_Observability_Controller_Progress.md` | Implementation progress tracker |
 | `docs/Kubernetes_Observability_Policy_Controller_Roadmap.md` | Full 10-step roadmap |
 | `docs/Rust_Foundations_for_Kubernetes_DevOps.md` | Rust language foundations reference |
@@ -445,4 +460,4 @@ DevOps & Platform Engineering Lab
 
 ------------------------------------------------------------------------
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-23

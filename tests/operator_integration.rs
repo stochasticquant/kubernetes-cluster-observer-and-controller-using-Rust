@@ -18,6 +18,9 @@ fn all_enabled_policy() -> DevOpsPolicySpec {
         require_readiness_probe: Some(true),
         max_restart_count: Some(3),
         forbid_pending_duration: Some(300),
+        enforcement_mode: None,
+        default_probe: None,
+        default_resources: None,
     }
 }
 
@@ -28,6 +31,9 @@ fn empty_policy() -> DevOpsPolicySpec {
         require_readiness_probe: None,
         max_restart_count: None,
         forbid_pending_duration: None,
+        enforcement_mode: None,
+        default_probe: None,
+        default_resources: None,
     }
 }
 
@@ -66,6 +72,9 @@ fn simulate_reconcile(
         violations: Some(total_violations),
         last_evaluated: Some("2026-02-22T00:00:00Z".to_string()),
         message: Some(message),
+        remediations_applied: None,
+        remediations_failed: None,
+        remediated_workloads: None,
     }
 }
 
@@ -170,6 +179,7 @@ fn test_policy_change_affects_score() {
         require_readiness_probe: Some(true),
         ..empty_policy()
     };
+
     let status_relaxed = simulate_reconcile(&pods, &relaxed);
 
     assert!(status_strict.violations.unwrap() > status_relaxed.violations.unwrap());

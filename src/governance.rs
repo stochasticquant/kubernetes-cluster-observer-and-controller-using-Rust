@@ -663,6 +663,9 @@ mod tests {
             require_readiness_probe: Some(true),
             max_restart_count: Some(3),
             forbid_pending_duration: Some(300),
+            enforcement_mode: None,
+            default_probe: None,
+            default_resources: None,
         }
     }
 
@@ -673,6 +676,9 @@ mod tests {
             require_readiness_probe: None,
             max_restart_count: None,
             forbid_pending_duration: None,
+            enforcement_mode: None,
+            default_probe: None,
+            default_resources: None,
         }
     }
 
@@ -723,6 +729,9 @@ mod tests {
             require_readiness_probe: Some(false),
             max_restart_count: None,
             forbid_pending_duration: None,
+            enforcement_mode: None,
+            default_probe: None,
+            default_resources: None,
         };
         let pod = make_test_pod("p", "default", "nginx:latest", false, false, 10, "Pending");
         let m = evaluate_pod_with_policy(&pod, &policy);

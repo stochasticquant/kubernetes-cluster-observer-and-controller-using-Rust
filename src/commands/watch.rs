@@ -81,19 +81,46 @@ pub(crate) struct ClusterState {
 /* ============================= ENTRY ============================= */
 
 pub async fn run() -> Result<()> {
+    println!("Starting watch controller...\n");
     info!("controller_starting");
 
     let client = Client::try_default().await
         .context("Failed to connect to Kubernetes cluster")?;
 
+    print!("  Cluster connection .......... ");
+    match client.apiserver_version().await {
+        Ok(v) => println!("OK (v{}.{})", v.major, v.minor),
+        Err(e) => {
+            println!("FAIL");
+            anyhow::bail!(
+                "Cannot reach cluster: {}. Is the cluster running?",
+                e
+            );
+        }
+    }
+
+    print!("  Leader election ............. ");
     if !acquire_leader(&client).await? {
+        println!("waiting (another instance holds the lease)");
         info!("not_leader_waiting");
         loop {
             sleep(Duration::from_secs(10)).await;
         }
     }
-
+    println!("acquired");
     info!("leader_acquired");
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+
+    println!("  HTTP server ................. http://{addr}");
+    println!();
+    println!("  Available endpoints:");
+    println!("    GET /healthz .............. Liveness probe (always 200 OK)");
+    println!("    GET /readyz ............... Readiness probe (503 until initial sync, then 200)");
+    println!("    GET /metrics .............. Prometheus metrics scrape endpoint");
+    println!();
+    println!("Watch controller running. Press Ctrl+C to stop.\n");
+    println!("{}", "=".repeat(70));
 
     let cluster_state = std::sync::Arc::new(Mutex::new(ClusterState {
         namespaces: HashMap::new(),
@@ -120,11 +147,14 @@ pub async fn run() -> Result<()> {
     });
 
     let http_handle = tokio::spawn(async move {
-        start_http_server(http_state, http_shutdown).await
+        start_http_server(http_state, http_shutdown, addr).await
     });
 
     signal::ctrl_c().await?;
     info!("shutdown_signal_received");
+    println!("\n{}", "=".repeat(70));
+    println!("Shutdown signal received. Stopping watch controller...");
+    println!("{}", "=".repeat(70));
 
     let _ = shutdown_tx.send(());
 
@@ -132,6 +162,7 @@ pub async fn run() -> Result<()> {
     let _ = http_handle.await?;
 
     info!("controller_stopped");
+    println!("Watch controller stopped.");
     Ok(())
 }
 
@@ -400,10 +431,9 @@ pub(crate) fn build_router(state: std::sync::Arc<Mutex<ClusterState>>) -> Router
 async fn start_http_server(
     state: std::sync::Arc<Mutex<ClusterState>>,
     mut shutdown: broadcast::Receiver<()>,
+    addr: SocketAddr,
 ) -> Result<()> {
     let app = build_router(state);
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
 
     let listener = tokio::net::TcpListener::bind(addr).await
         .context("Failed to bind HTTP server on :8080")?;

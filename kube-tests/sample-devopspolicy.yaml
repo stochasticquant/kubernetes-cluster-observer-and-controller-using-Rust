@@ -1,3 +1,5 @@
+---
+# Audit mode (default) — detect violations, never mutate workloads
 apiVersion: devops.stochastic.io/v1
 kind: DevOpsPolicy
 metadata:
@@ -9,3 +11,27 @@ spec:
   requireReadinessProbe: true
   maxRestartCount: 3
   forbidPendingDuration: 300
+
+---
+# Enforce mode — automatically patch non-compliant workloads
+apiVersion: devops.stochastic.io/v1
+kind: DevOpsPolicy
+metadata:
+  name: enforce-policy
+  namespace: staging
+spec:
+  forbidLatestTag: true
+  requireLivenessProbe: true
+  requireReadinessProbe: true
+  maxRestartCount: 3
+  forbidPendingDuration: 300
+  enforcementMode: enforce
+  defaultProbe:
+    tcpPort: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  defaultResources:
+    cpuRequest: "100m"
+    cpuLimit: "500m"
+    memoryRequest: "128Mi"
+    memoryLimit: "256Mi"

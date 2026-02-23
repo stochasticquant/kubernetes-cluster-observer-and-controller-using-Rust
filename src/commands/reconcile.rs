@@ -12,6 +12,7 @@ use tokio::signal;
 use tracing::{info, warn};
 
 use kube_devops::crd::{DevOpsPolicy, DevOpsPolicyStatus};
+use kube_devops::enforcement;
 use kube_devops::governance;
 
 /* ============================= CONFIG ============================= */
@@ -77,6 +78,45 @@ static POLICY_HEALTH: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     g
 });
 
+static REMEDIATIONS_APPLIED: LazyLock<IntCounter> = LazyLock::new(|| {
+    let c = IntCounter::new(
+        "devopspolicy_remediations_applied_total",
+        "Total successful remediations applied",
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(c.clone()))
+        .expect("metric not yet registered");
+    c
+});
+
+static REMEDIATIONS_FAILED: LazyLock<IntCounter> = LazyLock::new(|| {
+    let c = IntCounter::new(
+        "devopspolicy_remediations_failed_total",
+        "Total failed remediation attempts",
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(c.clone()))
+        .expect("metric not yet registered");
+    c
+});
+
+static ENFORCEMENT_MODE: LazyLock<IntGaugeVec> = LazyLock::new(|| {
+    let g = IntGaugeVec::new(
+        prometheus::Opts::new(
+            "devopspolicy_enforcement_mode",
+            "Enforcement mode per policy (0=audit, 1=enforce)",
+        ),
+        &["namespace", "policy"],
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(g.clone()))
+        .expect("metric not yet registered");
+    g
+});
+
 /* ============================= CONTEXT ============================= */
 
 struct ReconcileContext {
@@ -117,6 +157,9 @@ pub async fn run() -> Result<()> {
     LazyLock::force(&RECONCILE_ERRORS);
     LazyLock::force(&POLICY_VIOLATIONS);
     LazyLock::force(&POLICY_HEALTH);
+    LazyLock::force(&REMEDIATIONS_APPLIED);
+    LazyLock::force(&REMEDIATIONS_FAILED);
+    LazyLock::force(&ENFORCEMENT_MODE);
 
     println!("  CRD watch ................... DevOpsPolicy.devops.stochastic.io/v1");
     println!("  Requeue interval ............ {}s", REQUEUE_INTERVAL.as_secs());
@@ -230,9 +273,12 @@ async fn reconcile(
     let now = chrono::Utc::now();
     let timestamp = now.format("%H:%M:%S");
 
+    let enforce_mode = enforcement::is_enforcement_enabled(&policy.spec);
+    let mode_label = if enforce_mode { "enforce" } else { "audit" };
+
     println!(
         "[{timestamp}] {namespace}/{name}: {classification} — score {health_score}/100, \
-         {total_violations} violations, {pods} pods",
+         {total_violations} violations, {pods} pods (mode: {mode_label})",
         pods = aggregate.total_pods
     );
 
@@ -243,6 +289,7 @@ async fn reconcile(
         violations = total_violations,
         pods = aggregate.total_pods,
         classification,
+        mode = mode_label,
         "reconcile_evaluated"
     );
 
@@ -253,6 +300,66 @@ async fn reconcile(
     POLICY_HEALTH
         .with_label_values(&[&namespace, &name])
         .set(health_score as i64);
+    ENFORCEMENT_MODE
+        .with_label_values(&[&namespace, &name])
+        .set(if enforce_mode { 1 } else { 0 });
+
+    // ── Enforcement phase ──
+    let mut remediations_applied: u32 = 0;
+    let mut remediations_failed: u32 = 0;
+    let mut remediated_workloads: Vec<String> = Vec::new();
+    let mut seen_workloads = std::collections::HashSet::new();
+
+    if enforce_mode {
+        for pod in &pod_list.items {
+            let ns = pod.metadata.namespace.as_deref().unwrap_or_default();
+            if governance::is_system_namespace(ns) || enforcement::is_protected_namespace(ns) {
+                continue;
+            }
+
+            if let Some(plan) = enforcement::plan_remediation(pod, &policy.spec) {
+                let key = plan.workload.key();
+
+                // Deduplicate: skip if we already patched this workload in this cycle
+                if !seen_workloads.insert(key.clone()) {
+                    continue;
+                }
+
+                let result = enforcement::apply_remediation(&plan, &ctx.client, &policy.spec).await;
+
+                if result.success {
+                    remediations_applied += 1;
+                    REMEDIATIONS_APPLIED.inc();
+                    remediated_workloads.push(key.clone());
+                    info!(
+                        workload = %key,
+                        policy = %name,
+                        "enforcement_remediation_applied"
+                    );
+                    println!(
+                        "  [ENFORCE] Patched {key} ({} action(s))",
+                        plan.actions.len()
+                    );
+                } else {
+                    remediations_failed += 1;
+                    REMEDIATIONS_FAILED.inc();
+                    warn!(
+                        workload = %key,
+                        error = %result.message,
+                        policy = %name,
+                        "enforcement_remediation_failed"
+                    );
+                    println!("  [ENFORCE] FAILED {key}: {}", result.message);
+                }
+            }
+        }
+
+        if remediations_applied > 0 || remediations_failed > 0 {
+            println!(
+                "  [ENFORCE] Summary: {remediations_applied} applied, {remediations_failed} failed"
+            );
+        }
+    }
 
     // ── Update status sub-resource ──
     let status = DevOpsPolicyStatus {
@@ -262,6 +369,13 @@ async fn reconcile(
         violations: Some(total_violations),
         last_evaluated: Some(now.to_rfc3339()),
         message: Some(message),
+        remediations_applied: if enforce_mode { Some(remediations_applied) } else { None },
+        remediations_failed: if enforce_mode { Some(remediations_failed) } else { None },
+        remediated_workloads: if remediated_workloads.is_empty() {
+            None
+        } else {
+            Some(remediated_workloads)
+        },
     };
 
     let status_patch = serde_json::json!({ "status": status });
@@ -368,6 +482,7 @@ async fn handle_deletion(
     // Clear Prometheus metrics for this policy
     let _ = POLICY_VIOLATIONS.remove_label_values(&[&namespace, &name]);
     let _ = POLICY_HEALTH.remove_label_values(&[&namespace, &name]);
+    let _ = ENFORCEMENT_MODE.remove_label_values(&[&namespace, &name]);
 
     if has_finalizer(policy) {
         remove_finalizer(policy, client).await?;
@@ -440,6 +555,9 @@ mod tests {
             require_readiness_probe: Some(true),
             max_restart_count: Some(3),
             forbid_pending_duration: Some(300),
+            enforcement_mode: None,
+            default_probe: None,
+            default_resources: None,
         }
     }
 
@@ -563,6 +681,9 @@ mod tests {
             violations: Some(2),
             last_evaluated: Some("2026-01-01T00:00:00Z".to_string()),
             message: Some("2 violations across 20 pods — Healthy (95)".to_string()),
+            remediations_applied: None,
+            remediations_failed: None,
+            remediated_workloads: None,
         };
 
         assert_eq!(status.observed_generation, Some(3));
