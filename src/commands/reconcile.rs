@@ -149,6 +149,33 @@ static RECONCILE_DURATION: LazyLock<Histogram> = LazyLock::new(|| {
     h
 });
 
+static VIOLATIONS_BY_SEVERITY: LazyLock<IntGaugeVec> = LazyLock::new(|| {
+    let g = IntGaugeVec::new(
+        prometheus::Opts::new(
+            "devopspolicy_violations_by_severity",
+            "Policy violations grouped by severity level",
+        ),
+        &["severity", "namespace", "policy"],
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(g.clone()))
+        .expect("metric not yet registered");
+    g
+});
+
+static AUDIT_RESULTS_TOTAL: LazyLock<IntCounter> = LazyLock::new(|| {
+    let c = IntCounter::new(
+        "devopspolicy_audit_results_total",
+        "Total audit results created",
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(c.clone()))
+        .expect("metric not yet registered");
+    c
+});
+
 /* ============================= STATE ============================= */
 
 pub(crate) struct ReconcileState {
@@ -200,6 +227,8 @@ pub async fn run() -> Result<()> {
     LazyLock::force(&ENFORCEMENT_MODE);
     LazyLock::force(&PODS_SCANNED);
     LazyLock::force(&RECONCILE_DURATION);
+    LazyLock::force(&VIOLATIONS_BY_SEVERITY);
+    LazyLock::force(&AUDIT_RESULTS_TOTAL);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 9090));
 
@@ -397,6 +426,27 @@ async fn reconcile(
         .with_label_values(&[&namespace, &name])
         .set(if enforce_mode { 1 } else { 0 });
 
+    // ── Violations by severity ──
+    {
+        let mut severity_counts = std::collections::HashMap::new();
+        for pod in &pod_list.items {
+            let ns = pod.metadata.namespace.as_deref().unwrap_or_default();
+            if governance::is_system_namespace(ns) {
+                continue;
+            }
+            let details = governance::detect_violations_detailed(pod, &policy.spec);
+            for d in &details {
+                let sev = format!("{:?}", d.severity).to_lowercase();
+                *severity_counts.entry(sev).or_insert(0i64) += 1;
+            }
+        }
+        for sev in &["critical", "high", "medium", "low"] {
+            VIOLATIONS_BY_SEVERITY
+                .with_label_values(&[sev, &namespace, &name])
+                .set(*severity_counts.get(*sev).unwrap_or(&0));
+        }
+    }
+
     // ── Enforcement phase ──
     let mut remediations_applied: u32 = 0;
     let mut remediations_failed: u32 = 0;
@@ -576,6 +626,8 @@ async fn create_audit_result(
     audit_api
         .create(&Default::default(), &audit_result)
         .await?;
+
+    AUDIT_RESULTS_TOTAL.inc();
 
     info!(
         audit_result = %result_name,
