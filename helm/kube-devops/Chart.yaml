@@ -3,4 +3,4 @@ name: kube-devops
 description: Kubernetes Observability & Policy Controller
 type: application
 version: 0.3.0
-appVersion: "0.1.2"
+appVersion: "0.2.0"
