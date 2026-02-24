@@ -35,3 +35,24 @@ spec:
     cpuLimit: "500m"
     memoryRequest: "128Mi"
     memoryLimit: "256Mi"
+
+---
+# Strict policy with severity overrides — Critical violations block admission
+apiVersion: devops.stochastic.io/v1
+kind: DevOpsPolicy
+metadata:
+  name: strict-severity-policy
+  namespace: production
+spec:
+  forbidLatestTag: true
+  requireLivenessProbe: true
+  requireReadinessProbe: true
+  maxRestartCount: 3
+  forbidPendingDuration: 300
+  enforcementMode: enforce
+  severityOverrides:
+    latestTag: critical
+    missingLiveness: high
+    missingReadiness: high
+    highRestarts: medium
+    pending: low

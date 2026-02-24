@@ -17,23 +17,12 @@ fn all_enabled_policy() -> DevOpsPolicySpec {
         require_readiness_probe: Some(true),
         max_restart_count: Some(3),
         forbid_pending_duration: Some(300),
-        enforcement_mode: None,
-        default_probe: None,
-        default_resources: None,
+        ..Default::default()
     }
 }
 
 fn empty_policy() -> DevOpsPolicySpec {
-    DevOpsPolicySpec {
-        forbid_latest_tag: None,
-        require_liveness_probe: None,
-        require_readiness_probe: None,
-        max_restart_count: None,
-        forbid_pending_duration: None,
-        enforcement_mode: None,
-        default_probe: None,
-        default_resources: None,
-    }
+    DevOpsPolicySpec::default()
 }
 
 fn make_admission_pod(name: &str, namespace: &str, containers: Vec<Container>) -> Pod {
@@ -160,11 +149,7 @@ fn test_allow_when_policy_disables_all_checks() {
         forbid_latest_tag: Some(false),
         require_liveness_probe: Some(false),
         require_readiness_probe: Some(false),
-        max_restart_count: None,
-        forbid_pending_duration: None,
-        enforcement_mode: None,
-        default_probe: None,
-        default_resources: None,
+        ..Default::default()
     };
     let pod = make_admission_pod(
         "anything",

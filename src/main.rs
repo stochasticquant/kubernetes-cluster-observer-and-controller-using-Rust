@@ -5,7 +5,10 @@ use tracing_subscriber::prelude::*;
 mod cli;
 mod commands;
 
-use cli::{Cli, CrdAction, Commands, DeployAction, ObservabilityAction, WebhookAction};
+use cli::{
+    Cli, Commands, CrdAction, DeployAction, MultiClusterAction, ObservabilityAction, PolicyAction,
+    WebhookAction,
+};
 
 /// Wrap an async command so Ctrl+C produces a clean shutdown message.
 ///
@@ -90,6 +93,34 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Deploy { action: DeployAction::GenerateDeployments } => {
             print!("{}", commands::deploy::generate_deployments())
+        }
+
+        // Policy subcommands
+        Commands::Policy { action: PolicyAction::BundleList } => {
+            commands::policy::bundle_list()?
+        }
+        Commands::Policy { action: PolicyAction::BundleShow { name } } => {
+            commands::policy::bundle_show(&name)?
+        }
+        Commands::Policy { action: PolicyAction::BundleApply { name, namespace, policy_name } } => {
+            commands::policy::bundle_apply(&name, &namespace, &policy_name)?
+        }
+        Commands::Policy { action: PolicyAction::Export { namespace } } => {
+            interruptible(commands::policy::export(&namespace)).await?
+        }
+        Commands::Policy { action: PolicyAction::Import { file, dry_run } } => {
+            interruptible(commands::policy::import(&file, dry_run)).await?
+        }
+        Commands::Policy { action: PolicyAction::Diff { file } } => {
+            interruptible(commands::policy::diff(&file)).await?
+        }
+
+        // Multi-cluster subcommands
+        Commands::MultiCluster { action: MultiClusterAction::ListContexts } => {
+            commands::multi_cluster::list_contexts()?
+        }
+        Commands::MultiCluster { action: MultiClusterAction::Analyze { contexts, bundle, per_cluster } } => {
+            interruptible(commands::multi_cluster::analyze(contexts, bundle, per_cluster)).await?
         }
     }
 

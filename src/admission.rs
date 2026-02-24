@@ -1,6 +1,7 @@
 use k8s_openapi::api::core::v1::Pod;
 
-use crate::crd::DevOpsPolicySpec;
+use crate::crd::{DevOpsPolicySpec, Severity};
+use crate::governance;
 
 /* ============================= TYPES ============================= */
 
@@ -93,6 +94,53 @@ pub fn format_denial_message(violations: &[String]) -> String {
     format!("Denied by DevOpsPolicy: {}", violations.join(", "))
 }
 
+/* ============================= SEVERITY-AWARE ADMISSION ============================= */
+
+/// Numeric ordering for severity levels (higher = more severe).
+fn severity_rank(severity: &Severity) -> u8 {
+    match severity {
+        Severity::Low => 1,
+        Severity::Medium => 2,
+        Severity::High => 3,
+        Severity::Critical => 4,
+    }
+}
+
+/// Validate a pod against admission-relevant policy checks with severity threshold.
+///
+/// Only violations at or above `min_deny_severity` cause denial.
+/// Runtime-only checks (restart count, pending duration) are automatically skipped.
+pub fn validate_pod_admission_with_severity(
+    pod: &Pod,
+    policy: &DevOpsPolicySpec,
+    min_deny_severity: &Severity,
+) -> AdmissionVerdict {
+    let admission_policy = build_admission_policy_for_validation(policy);
+    let details = governance::detect_violations_detailed(pod, &admission_policy);
+
+    let threshold = severity_rank(min_deny_severity);
+    let violations: Vec<String> = details
+        .iter()
+        .filter(|v| severity_rank(&v.severity) >= threshold)
+        .map(|v| v.message.clone())
+        .collect();
+
+    if violations.is_empty() {
+        AdmissionVerdict {
+            allowed: true,
+            message: None,
+            violations,
+        }
+    } else {
+        let message = format_denial_message(&violations);
+        AdmissionVerdict {
+            allowed: false,
+            message: Some(message),
+            violations,
+        }
+    }
+}
+
 /* ============================= TESTS ============================= */
 
 #[cfg(test)]
@@ -101,6 +149,8 @@ mod tests {
     use k8s_openapi::api::core::v1::{Container, PodSpec, Probe};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
+    use crate::crd::SeverityOverrides;
+
     fn all_enabled_policy() -> DevOpsPolicySpec {
         DevOpsPolicySpec {
             forbid_latest_tag: Some(true),
@@ -108,23 +158,12 @@ mod tests {
             require_readiness_probe: Some(true),
             max_restart_count: Some(3),
             forbid_pending_duration: Some(300),
-            enforcement_mode: None,
-            default_probe: None,
-            default_resources: None,
+            ..Default::default()
         }
     }
 
     fn empty_policy() -> DevOpsPolicySpec {
-        DevOpsPolicySpec {
-            forbid_latest_tag: None,
-            require_liveness_probe: None,
-            require_readiness_probe: None,
-            max_restart_count: None,
-            forbid_pending_duration: None,
-            enforcement_mode: None,
-            default_probe: None,
-            default_resources: None,
-        }
+        DevOpsPolicySpec::default()
     }
 
     fn make_admission_pod(name: &str, containers: Vec<Container>) -> Pod {
@@ -386,5 +425,136 @@ mod tests {
         let verdict = validate_pod_admission(&pod, &policy);
         assert!(verdict.allowed);
         assert!(verdict.violations.is_empty());
+    }
+
+    // ── severity-aware admission tests ──
+
+    #[test]
+    fn test_severity_admission_critical_threshold_allows_high() {
+        // Default latest_tag severity is High. With Critical threshold, should allow.
+        let policy = DevOpsPolicySpec {
+            forbid_latest_tag: Some(true),
+            ..Default::default()
+        };
+        let pod = make_admission_pod(
+            "pod",
+            vec![container_with("nginx", "nginx:latest", true, true)],
+        );
+        let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::Critical);
+        assert!(verdict.allowed, "High severity violation should be allowed with Critical threshold");
+    }
+
+    #[test]
+    fn test_severity_admission_high_threshold_denies_high() {
+        // Default latest_tag severity is High. With High threshold, should deny.
+        let policy = DevOpsPolicySpec {
+            forbid_latest_tag: Some(true),
+            ..Default::default()
+        };
+        let pod = make_admission_pod(
+            "pod",
+            vec![container_with("nginx", "nginx:latest", true, true)],
+        );
+        let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::High);
+        assert!(!verdict.allowed, "High severity violation should be denied with High threshold");
+    }
+
+    #[test]
+    fn test_severity_admission_low_threshold_denies_all() {
+        let policy = DevOpsPolicySpec {
+            forbid_latest_tag: Some(true),
+            require_liveness_probe: Some(true),
+            require_readiness_probe: Some(true),
+            ..Default::default()
+        };
+        let pod = make_admission_pod(
+            "pod",
+            vec![container_with("nginx", "nginx:latest", false, false)],
+        );
+        let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::Low);
+        assert!(!verdict.allowed);
+        assert_eq!(verdict.violations.len(), 3);
+    }
+
+    #[test]
+    fn test_severity_admission_medium_threshold_skips_low() {
+        // missing_readiness default severity is Low. With Medium threshold, should be skipped.
+        let policy = DevOpsPolicySpec {
+            require_readiness_probe: Some(true),
+            ..Default::default()
+        };
+        let pod = make_admission_pod(
+            "pod",
+            vec![container_with("nginx", "nginx:1.25", true, false)],
+        );
+        let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::Medium);
+        assert!(verdict.allowed, "Low severity violation should be allowed with Medium threshold");
+    }
+
+    #[test]
+    fn test_severity_admission_overrides_respected() {
+        // Override latest_tag to Low, then with High threshold, should allow.
+        let policy = DevOpsPolicySpec {
+            forbid_latest_tag: Some(true),
+            severity_overrides: Some(SeverityOverrides {
+                latest_tag: Some(Severity::Low),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let pod = make_admission_pod(
+            "pod",
+            vec![container_with("nginx", "nginx:latest", true, true)],
+        );
+        let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::High);
+        assert!(verdict.allowed, "Low severity (overridden) should be allowed with High threshold");
+    }
+
+    #[test]
+    fn test_severity_admission_compliant_pod_all_thresholds() {
+        let policy = all_enabled_policy();
+        let pod = make_admission_pod(
+            "pod",
+            vec![container_with("nginx", "nginx:1.25", true, true)],
+        );
+        for threshold in [Severity::Low, Severity::Medium, Severity::High, Severity::Critical] {
+            let verdict = validate_pod_admission_with_severity(&pod, &policy, &threshold);
+            assert!(verdict.allowed, "compliant pod should be allowed at any threshold");
+        }
+    }
+
+    #[test]
+    fn test_severity_admission_no_spec_allows() {
+        let pod = Pod {
+            metadata: ObjectMeta {
+                name: Some("no-spec".to_string()),
+                ..Default::default()
+            },
+            spec: None,
+            status: None,
+        };
+        let verdict = validate_pod_admission_with_severity(
+            &pod,
+            &all_enabled_policy(),
+            &Severity::Low,
+        );
+        assert!(verdict.allowed);
+    }
+
+    #[test]
+    fn test_severity_admission_runtime_checks_skipped() {
+        let admission_policy = build_admission_policy_for_validation(&all_enabled_policy());
+        assert!(admission_policy.max_restart_count.is_none());
+        assert!(admission_policy.forbid_pending_duration.is_none());
+        // severity_overrides should carry through
+        let policy_with_overrides = DevOpsPolicySpec {
+            severity_overrides: Some(SeverityOverrides {
+                latest_tag: Some(Severity::Critical),
+                ..Default::default()
+            }),
+            ..all_enabled_policy()
+        };
+        let admission = build_admission_policy_for_validation(&policy_with_overrides);
+        assert!(admission.severity_overrides.is_some());
     }
 }

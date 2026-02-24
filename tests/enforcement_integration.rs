@@ -33,6 +33,7 @@ fn enforce_policy() -> DevOpsPolicySpec {
             memory_request: Some("128Mi".to_string()),
             memory_limit: Some("256Mi".to_string()),
         }),
+        ..Default::default()
     }
 }
 
@@ -44,8 +45,7 @@ fn audit_policy() -> DevOpsPolicySpec {
         max_restart_count: Some(3),
         forbid_pending_duration: Some(300),
         enforcement_mode: Some(EnforcementMode::Audit),
-        default_probe: None,
-        default_resources: None,
+        ..Default::default()
     }
 }
 
@@ -229,11 +229,7 @@ fn test_enforcement_none_mode_same_as_audit() {
         forbid_latest_tag: Some(true),
         require_liveness_probe: Some(true),
         require_readiness_probe: Some(true),
-        max_restart_count: None,
-        forbid_pending_duration: None,
-        enforcement_mode: None, // Not set = same as audit
-        default_probe: None,
-        default_resources: None,
+        ..Default::default() // enforcement_mode: None = same as audit
     };
 
     let plan = enforcement::plan_remediation(&pod, &policy);

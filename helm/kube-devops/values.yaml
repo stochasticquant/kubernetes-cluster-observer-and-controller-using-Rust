@@ -20,6 +20,9 @@ serviceMonitor:
 grafanaDashboard:
   enabled: true
 
+auditResults:
+  retention: 10
+
 pdb:
   enabled: true
   minAvailable: 1

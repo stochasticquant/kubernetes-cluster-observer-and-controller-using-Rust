@@ -18,23 +18,12 @@ fn all_enabled_policy() -> DevOpsPolicySpec {
         require_readiness_probe: Some(true),
         max_restart_count: Some(3),
         forbid_pending_duration: Some(300),
-        enforcement_mode: None,
-        default_probe: None,
-        default_resources: None,
+        ..Default::default()
     }
 }
 
 fn empty_policy() -> DevOpsPolicySpec {
-    DevOpsPolicySpec {
-        forbid_latest_tag: None,
-        require_liveness_probe: None,
-        require_readiness_probe: None,
-        max_restart_count: None,
-        forbid_pending_duration: None,
-        enforcement_mode: None,
-        default_probe: None,
-        default_resources: None,
-    }
+    DevOpsPolicySpec::default()
 }
 
 /// Simulate a full reconcile cycle: evaluate pods, aggregate, score, build status.

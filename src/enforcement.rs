@@ -545,6 +545,7 @@ mod tests {
                 memory_request: Some("128Mi".to_string()),
                 memory_limit: Some("256Mi".to_string()),
             }),
+            ..Default::default()
         }
     }
 
@@ -556,8 +557,7 @@ mod tests {
             max_restart_count: Some(3),
             forbid_pending_duration: Some(300),
             enforcement_mode: Some(EnforcementMode::Audit),
-            default_probe: None,
-            default_resources: None,
+            ..Default::default()
         }
     }
 
@@ -708,16 +708,7 @@ mod tests {
 
     #[test]
     fn test_enforcement_disabled_when_none() {
-        let policy = DevOpsPolicySpec {
-            enforcement_mode: None,
-            forbid_latest_tag: None,
-            require_liveness_probe: None,
-            require_readiness_probe: None,
-            max_restart_count: None,
-            forbid_pending_duration: None,
-            default_probe: None,
-            default_resources: None,
-        };
+        let policy = DevOpsPolicySpec::default();
         assert!(!is_enforcement_enabled(&policy));
     }
 
@@ -958,11 +949,8 @@ mod tests {
             forbid_latest_tag: Some(true),
             require_liveness_probe: Some(true),
             require_readiness_probe: Some(true),
-            max_restart_count: None,
-            forbid_pending_duration: None,
             enforcement_mode: Some(EnforcementMode::Enforce),
-            default_probe: None,
-            default_resources: None,
+            ..Default::default()
         };
         let plan = plan_remediation(&pod, &policy);
         // :latest is not patchable, and probes are present → no remediation plan

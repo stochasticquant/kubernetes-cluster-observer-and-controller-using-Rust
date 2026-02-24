@@ -17,7 +17,9 @@ use tokio::sync::{broadcast, Mutex};
 use tokio::signal;
 use tracing::{info, warn};
 
-use kube_devops::crd::{DevOpsPolicy, DevOpsPolicyStatus};
+use kube_devops::crd::{
+    AuditViolation, DevOpsPolicy, DevOpsPolicyStatus, PolicyAuditResult, PolicyAuditResultSpec,
+};
 use kube_devops::enforcement;
 use kube_devops::governance;
 
@@ -486,7 +488,132 @@ async fn reconcile(
         "status_updated"
     );
 
+    // ── Create audit result (async, non-blocking) ──
+    let audit_client = ctx.client.clone();
+    let audit_name = name.clone();
+    let audit_ns = namespace.clone();
+    let audit_policy_spec = policy.spec.clone();
+    let audit_timestamp = now.to_rfc3339();
+    let audit_pods: Vec<_> = pod_list.items.clone();
+
+    tokio::spawn(async move {
+        if let Err(e) = create_audit_result(
+            &audit_client,
+            &audit_name,
+            &audit_ns,
+            &audit_policy_spec,
+            &audit_timestamp,
+            health_score,
+            total_violations,
+            &audit_pods,
+        )
+        .await
+        {
+            warn!(error = %e, policy = %audit_name, "audit_result_creation_failed");
+        }
+    });
+
     Ok(Action::requeue(REQUEUE_INTERVAL))
+}
+
+/* ============================= AUDIT RESULTS ============================= */
+
+const AUDIT_RETENTION: usize = 10;
+
+#[allow(clippy::too_many_arguments)]
+async fn create_audit_result(
+    client: &Client,
+    policy_name: &str,
+    namespace: &str,
+    policy_spec: &kube_devops::crd::DevOpsPolicySpec,
+    timestamp: &str,
+    health_score: u32,
+    total_violations: u32,
+    pods: &[Pod],
+) -> anyhow::Result<()> {
+    let audit_api: Api<PolicyAuditResult> = Api::namespaced(client.clone(), namespace);
+
+    // Collect detailed violations
+    let mut violations = Vec::new();
+    let mut total_pods: u32 = 0;
+    for pod in pods {
+        let ns = pod.metadata.namespace.as_deref().unwrap_or_default();
+        if governance::is_system_namespace(ns) {
+            continue;
+        }
+        total_pods += 1;
+        let details = governance::detect_violations_detailed(pod, policy_spec);
+        for d in details {
+            violations.push(AuditViolation {
+                pod_name: d.pod_name,
+                container_name: d.container_name,
+                violation_type: d.violation_type,
+                severity: d.severity,
+                message: d.message,
+            });
+        }
+    }
+
+    let classification = governance::classify_health(health_score).to_string();
+
+    let ts_millis = chrono::Utc::now().timestamp_millis();
+    let result_name = format!("{policy_name}-{ts_millis}");
+
+    let audit_result = PolicyAuditResult::new(
+        &result_name,
+        PolicyAuditResultSpec {
+            policy_name: policy_name.to_string(),
+            cluster_name: None,
+            timestamp: timestamp.to_string(),
+            health_score,
+            total_violations,
+            total_pods,
+            classification,
+            violations,
+        },
+    );
+
+    audit_api
+        .create(&Default::default(), &audit_result)
+        .await?;
+
+    info!(
+        audit_result = %result_name,
+        policy = %policy_name,
+        "audit_result_created"
+    );
+
+    // Retention: keep last N results per policy
+    let existing = audit_api
+        .list(&Default::default())
+        .await?;
+
+    let mut policy_results: Vec<_> = existing
+        .items
+        .iter()
+        .filter(|r| r.spec.policy_name == policy_name)
+        .collect();
+
+    policy_results.sort_by(|a, b| a.spec.timestamp.cmp(&b.spec.timestamp));
+
+    if policy_results.len() > AUDIT_RETENTION {
+        let to_delete = policy_results.len() - AUDIT_RETENTION;
+        for result in policy_results.iter().take(to_delete) {
+            let name = result
+                .metadata
+                .name
+                .as_deref()
+                .unwrap_or_default();
+            if let Err(e) = audit_api
+                .delete(name, &Default::default())
+                .await
+            {
+                warn!(error = %e, name = %name, "audit_result_delete_failed");
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /* ============================= ERROR POLICY ============================= */
@@ -710,9 +837,7 @@ mod tests {
             require_readiness_probe: Some(true),
             max_restart_count: Some(3),
             forbid_pending_duration: Some(300),
-            enforcement_mode: None,
-            default_probe: None,
-            default_resources: None,
+            ..Default::default()
         }
     }
 

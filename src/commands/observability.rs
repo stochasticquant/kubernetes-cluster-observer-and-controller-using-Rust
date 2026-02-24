@@ -154,6 +154,12 @@ fn build_dashboard_json() -> serde_json::Value {
             graph_panel(19, "Allow/Deny Rate", "rate(webhook_requests_total[5m])", 3),
             graph_panel(20, "Denial Breakdown", "rate(webhook_denials_total[5m])", 3),
             graph_panel(21, "Request Latency", "histogram_quantile(0.99, rate(webhook_request_duration_seconds_bucket[5m]))", 3),
+
+            // ── Row 5: Severity & Audit ──
+            row_panel(22, "Severity & Audit"),
+            graph_panel(23, "Violations by Severity", "sum by (severity) (devopspolicy_violations_by_severity)", 4),
+            graph_panel(24, "Audit Results Over Time", "devopspolicy_audit_results_total", 4),
+            stat_panel(25, "Critical Violations", "sum(devopspolicy_violations_by_severity{severity=\"critical\"})", 4),
         ],
         "schemaVersion": 39,
         "tags": ["kubernetes", "kube-devops"],
@@ -374,7 +380,7 @@ mod tests {
     fn test_dashboard_has_panels() {
         let dashboard = build_dashboard_json();
         let panels = dashboard["panels"].as_array().expect("panels should be an array");
-        assert!(panels.len() >= 16, "dashboard should have at least 16 panels");
+        assert!(panels.len() >= 20, "dashboard should have at least 20 panels");
     }
 
     #[test]
@@ -408,6 +414,8 @@ mod tests {
             "devopspolicy_enforcement_mode",
             "webhook_denials_total",
             "webhook_request_duration_seconds",
+            "devopspolicy_violations_by_severity",
+            "devopspolicy_audit_results_total",
         ];
 
         for metric in &expected_metrics {
