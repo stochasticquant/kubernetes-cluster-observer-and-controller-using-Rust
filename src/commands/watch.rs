@@ -35,7 +35,7 @@ use kube_devops::governance::{
 /* ============================= CONFIG ============================= */
 
 const LEASE_NAME: &str = "kube-devops-leader";
-const LEASE_NAMESPACE: &str = "default";
+const LEASE_NAMESPACE: &str = "kube-devops";
 const LEASE_DURATION_SECONDS: i32 = 15;
 const LEASE_RENEW_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -106,20 +106,41 @@ pub async fn run() -> Result<()> {
         }
     }
 
+    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+
+    let cluster_state = std::sync::Arc::new(Mutex::new(ClusterState {
+        namespaces: HashMap::new(),
+        ready: false,
+    }));
+
+    let (shutdown_tx, _) = broadcast::channel::<()>(1);
+
+    // Start HTTP server immediately so health probes pass even for non-leaders
+    let http_state = cluster_state.clone();
+    let http_shutdown = shutdown_tx.subscribe();
+    let http_handle = tokio::spawn(async move {
+        start_http_server(http_state, http_shutdown, addr).await
+    });
+
+    println!("  HTTP server ................. http://{addr}");
+
     print!("  Leader election ............. ");
     if !acquire_leader(&client).await? {
         println!("waiting (another instance holds the lease)");
         info!("not_leader_waiting");
+        // Non-leader: keep running so HTTP health probes pass; retry periodically
         loop {
             sleep(Duration::from_secs(10)).await;
+            if acquire_leader(&client).await.unwrap_or(false) {
+                println!("  Leader election ............. acquired (promoted)");
+                info!("leader_promoted");
+                break;
+            }
         }
     }
     println!("acquired");
     info!("leader_acquired");
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-
-    println!("  HTTP server ................. http://{addr}");
     println!();
     println!("  Available endpoints:");
     println!("    GET /healthz .............. Liveness probe (always 200 OK)");
@@ -129,13 +150,6 @@ pub async fn run() -> Result<()> {
     println!("Watch controller running. Press Ctrl+C to stop.\n");
     println!("{}", "=".repeat(70));
 
-    let cluster_state = std::sync::Arc::new(Mutex::new(ClusterState {
-        namespaces: HashMap::new(),
-        ready: false,
-    }));
-
-    let (shutdown_tx, _) = broadcast::channel::<()>(1);
-
     // Spawn lease renewal
     let renewal_client = client.clone();
     let renewal_shutdown = shutdown_tx.subscribe();
@@ -144,17 +158,10 @@ pub async fn run() -> Result<()> {
     });
 
     let watch_state = cluster_state.clone();
-    let http_state = cluster_state.clone();
-
     let watch_shutdown = shutdown_tx.subscribe();
-    let http_shutdown = shutdown_tx.subscribe();
 
     let watch_handle = tokio::spawn(async move {
         watch_loop(watch_state, watch_shutdown).await
-    });
-
-    let http_handle = tokio::spawn(async move {
-        start_http_server(http_state, http_shutdown, addr).await
     });
 
     signal::ctrl_c().await?;

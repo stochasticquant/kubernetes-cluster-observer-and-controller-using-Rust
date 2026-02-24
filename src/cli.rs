@@ -49,6 +49,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: ObservabilityAction,
     },
+
+    /// Generate Kubernetes deployment manifests (RBAC, Deployments, PDBs)
+    Deploy {
+        #[command(subcommand)]
+        action: DeployAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -105,4 +111,17 @@ pub enum ObservabilityAction {
 
     /// Print only the Grafana dashboard ConfigMap
     GenerateDashboard,
+}
+
+#[derive(Subcommand)]
+#[allow(clippy::enum_variant_names)]
+pub enum DeployAction {
+    /// Print all deployment manifests (Namespace + RBAC + Deployments + PDBs)
+    GenerateAll,
+
+    /// Print RBAC manifests only (ServiceAccount + ClusterRole + ClusterRoleBinding)
+    GenerateRbac,
+
+    /// Print Deployment manifests only (watch + reconcile + webhook)
+    GenerateDeployments,
 }

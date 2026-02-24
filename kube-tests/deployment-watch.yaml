@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-devops-watch
+  namespace: kube-devops
+  labels:
+    app.kubernetes.io/name: kube-devops
+    app.kubernetes.io/component: watch
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-devops
+      app.kubernetes.io/component: watch
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-devops
+        app.kubernetes.io/component: watch
+    spec:
+      serviceAccountName: kube-devops
+      containers:
+        - name: kube-devops
+          image: 192.168.1.68:5000/kube-devops:v0.1.2
+          imagePullPolicy: IfNotPresent
+          args:
+            - "watch"
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true

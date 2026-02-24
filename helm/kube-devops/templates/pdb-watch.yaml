@@ -1,0 +1,16 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kube-devops.fullname" . }}-watch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-devops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: watch
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kube-devops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: watch
+{{- end }}

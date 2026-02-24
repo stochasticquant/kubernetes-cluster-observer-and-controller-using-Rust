@@ -44,13 +44,13 @@ on building similar capabilities from scratch to deeply understand:
 
 ------------------------------------------------------------------------
 
-## Current Stage: Step 8 -- Prometheus Expansion
+## Current Stage: Step 9 -- High Availability & Production Hardening (Deployed)
 
-The project now has **full production observability** with Prometheus metrics
-on all components, Kubernetes ServiceMonitor auto-discovery, and a Grafana
-dashboard:
+The project is **deployed and running in production** on a 9-node Kubernetes cluster
+with a multi-stage Dockerfile, Kubernetes deployment manifests (RBAC, Deployments,
+PDBs), Helm chart, and verified Prometheus + Grafana observability:
 
--   Structured Rust CLI with 14 subcommands
+-   Structured Rust CLI with 17 subcommands
 -   `DevOpsPolicy` CRD (`devops.stochastic.io/v1`) for user-defined governance rules
 -   Controller reconciliation loop via `kube_runtime::Controller`
 -   Policy-aware pod evaluation (only checks what the policy enables)
@@ -66,7 +66,7 @@ dashboard:
 -   Weighted governance scoring engine with namespace-level health tracking
 -   Prometheus metrics across all 3 components (16 metrics total)
 -   HTTP health endpoints on watch (:8080), reconcile (:9090), webhook (:8443)
--   Leader election via Kubernetes Lease API for HA deployment
+-   Leader election via Kubernetes Lease API (with automatic non-leader promotion)
 -   Structured JSON logging via `tracing`
 -   Graceful shutdown with `Ctrl+C` handling (watch, reconcile, and webhook modes)
 -   Validating Admission Webhook (HTTPS, TLS, self-signed cert generation)
@@ -75,7 +75,12 @@ dashboard:
 -   System namespace bypass — never blocks `kube-system`, `cert-manager`, etc.
 -   Kubernetes ServiceMonitor manifests for Prometheus auto-discovery
 -   Grafana dashboard ConfigMap with 22 panels across 4 rows
--   Comprehensive test suite (207 tests)
+-   Multi-stage Dockerfile for production container images
+-   Kubernetes deployment manifests (Namespace, RBAC, Deployments, PDBs)
+-   Helm chart for configurable production deployments
+-   Comprehensive test suite (228 tests)
+-   **Live deployment**: 6 pods (2 per component) on 9-node cluster, image `v0.1.2`
+-   **Verified observability**: All 6 Prometheus targets UP, Grafana dashboard with live data
 
 ### CLI Commands
 
@@ -95,6 +100,9 @@ kube-devops webhook install-config  # Print ValidatingWebhookConfiguration YAML
 kube-devops observability generate-all              # Print all observability manifests
 kube-devops observability generate-service-monitors # Print ServiceMonitor manifests
 kube-devops observability generate-dashboard        # Print Grafana dashboard ConfigMap
+kube-devops deploy generate-all          # Print all deployment manifests
+kube-devops deploy generate-rbac         # Print RBAC manifests only
+kube-devops deploy generate-deployments  # Print Deployment manifests only
 ```
 
 ------------------------------------------------------------------------
@@ -106,10 +114,12 @@ kube-devops/
  ├── Cargo.toml
  ├── Cargo.lock
  ├── rust-toolchain.toml
+ ├── Dockerfile              # Multi-stage production build
+ ├── .dockerignore
  ├── src/
  │   ├── main.rs              # Entry point, async runtime, command routing
  │   ├── lib.rs               # Library crate: exports admission + crd + governance + enforcement
- │   ├── cli.rs               # clap CLI definition (14 subcommands)
+ │   ├── cli.rs               # clap CLI definition (17 subcommands)
  │   ├── admission.rs         # Pure admission validation logic
  │   ├── crd.rs               # DevOpsPolicy CRD definition (spec + status)
  │   ├── enforcement.rs       # Policy enforcement: owner resolution, remediation, patching
@@ -124,7 +134,8 @@ kube-devops/
  │        ├── crd.rs          # CRD generate/install commands
  │        ├── reconcile.rs    # Operator reconcile loop, finalizers, metrics, HTTP server (:9090)
  │        ├── webhook.rs      # Admission webhook HTTPS server, cert gen, config
- │        └── observability.rs # Service, ServiceMonitor, Grafana dashboard generators
+ │        ├── observability.rs # Service, ServiceMonitor, Grafana dashboard generators
+ │        └── deploy.rs       # Deployment manifest generators (RBAC, Deployments, PDBs)
  ├── tests/
  │   ├── common/
  │   │   └── mod.rs                  # Shared test pod builder helper
@@ -142,7 +153,21 @@ kube-devops/
  │   ├── servicemonitor-watch.yaml   # Watch ServiceMonitor
  │   ├── servicemonitor-reconcile.yaml # Reconcile ServiceMonitor
  │   ├── servicemonitor-webhook.yaml # Webhook ServiceMonitor
- │   └── grafana-dashboard-configmap.yaml # Grafana dashboard ConfigMap
+ │   ├── grafana-dashboard-configmap.yaml # Grafana dashboard ConfigMap
+ │   ├── namespace.yaml              # Namespace manifest
+ │   ├── serviceaccount.yaml         # ServiceAccount manifest
+ │   ├── clusterrole.yaml            # ClusterRole manifest
+ │   ├── clusterrolebinding.yaml     # ClusterRoleBinding manifest
+ │   ├── deployment-watch.yaml       # Watch Deployment manifest
+ │   ├── deployment-reconcile.yaml   # Reconcile Deployment manifest
+ │   ├── deployment-webhook.yaml     # Webhook Deployment manifest
+ │   ├── pdb-watch.yaml              # Watch PodDisruptionBudget
+ │   ├── pdb-reconcile.yaml          # Reconcile PodDisruptionBudget
+ │   └── pdb-webhook.yaml            # Webhook PodDisruptionBudget
+ ├── helm/kube-devops/               # Helm chart for production deployment
+ │   ├── Chart.yaml
+ │   ├── values.yaml
+ │   └── templates/                  # 18 Helm templates
  └── docs/
      ├── Step_1_Code_Explanation.md
      ├── Step_2_Kubernetes_Integration.md
@@ -164,7 +189,7 @@ kube-devops/
 
 | Subsystem | File | Description |
 |---|---|---|
-| CLI | `cli.rs` | clap-based command parsing with 14 subcommands |
+| CLI | `cli.rs` | clap-based command parsing with 17 subcommands |
 | Admission | `admission.rs` | Pure admission validation logic (policy-driven, fail-open) |
 | CRD | `crd.rs` | DevOpsPolicy CRD definition with spec + status + enforcement types |
 | Governance Engine | `governance.rs` | Pod evaluation, violation detection, policy-aware checks, weighted scoring |
@@ -174,6 +199,7 @@ kube-devops/
 | Admission Webhook | `commands/webhook.rs` | HTTPS server, TLS cert generation, webhook config |
 | Leader Election | `commands/watch.rs` | Lease-based leader election for HA multi-replica deployment |
 | Observability | `commands/observability.rs` | Service, ServiceMonitor, Grafana dashboard generators |
+| Deploy | `commands/deploy.rs` | Deployment manifest generators (RBAC, Deployments, PDBs) |
 | HTTP Server | `commands/watch.rs`, `commands/reconcile.rs` | axum servers exposing `/healthz`, `/readyz`, `/metrics` |
 | Prometheus | `commands/watch.rs`, `commands/reconcile.rs`, `commands/webhook.rs` | 16 metrics across watch, reconcile, enforcement, and admission |
 | Logging | `main.rs` | Structured JSON logging via `tracing` + `tracing-subscriber` |
@@ -241,6 +267,13 @@ cargo build              # Debug build → target/debug/kube-devops
 cargo build --release    # Release build → target/release/kube-devops
 ```
 
+### Docker Build (on cluster master node)
+
+``` bash
+docker build -t 192.168.1.68:5000/kube-devops:v0.1.2 .
+docker push 192.168.1.68:5000/kube-devops:v0.1.2
+```
+
 ------------------------------------------------------------------------
 
 ## How to Run
@@ -263,6 +296,9 @@ cargo run -- webhook install-config --ca-bundle-path ca.crt
 cargo run -- observability generate-all
 cargo run -- observability generate-service-monitors
 cargo run -- observability generate-dashboard
+cargo run -- deploy generate-all
+cargo run -- deploy generate-rbac
+cargo run -- deploy generate-deployments
 ```
 
 Using the compiled binary directly:
@@ -283,6 +319,9 @@ Using the compiled binary directly:
 ./target/debug/kube-devops observability generate-all
 ./target/debug/kube-devops observability generate-service-monitors
 ./target/debug/kube-devops observability generate-dashboard
+./target/debug/kube-devops deploy generate-all
+./target/debug/kube-devops deploy generate-rbac
+./target/debug/kube-devops deploy generate-deployments
 ```
 
 ------------------------------------------------------------------------
@@ -306,7 +345,7 @@ Endpoints available while running (port 9090):
 |---|---|
 | `GET /healthz` | Liveness probe (always 200 OK) |
 | `GET /readyz` | Readiness probe (503 until first reconcile, then 200) |
-| `GET /metrics` | Prometheus metrics scrape endpoint (9 metrics) |
+| `GET /metrics` | Prometheus metrics scrape endpoint |
 
 ------------------------------------------------------------------------
 
@@ -367,11 +406,11 @@ Endpoints available while running:
 
 ## Testing
 
-The project includes 207 automated tests that run without a Kubernetes
+The project includes 228 automated tests that run without a Kubernetes
 cluster. All Pod and CRD objects are constructed synthetically in-memory.
 
 ``` bash
-cargo test                                       # Full suite (207 tests)
+cargo test                                       # Full suite (228 tests)
 cargo test --lib admission::tests                # Admission unit tests (16)
 cargo test --lib governance::tests               # Governance unit tests (48)
 cargo test --lib crd::tests                      # CRD unit tests (18)
@@ -380,6 +419,7 @@ cargo test --lib commands::watch::tests          # HTTP endpoint + metrics tests
 cargo test --lib commands::reconcile::tests      # Reconcile + HTTP endpoint tests (20)
 cargo test --lib commands::webhook::tests        # Webhook unit tests (9)
 cargo test --lib commands::observability::tests  # Observability manifest tests (12)
+cargo test --bin kube-devops commands::deploy::tests  # Deploy manifest tests (21)
 cargo test --test admission_integration          # Admission integration tests (12)
 cargo test --test governance_integration         # Governance integration tests (6)
 cargo test --test operator_integration           # Operator integration tests (13)
@@ -396,6 +436,7 @@ cargo test --test enforcement_integration        # Enforcement integration tests
 | Unit (bin) | `src/commands/reconcile.rs` | 20 | Aggregation, finalizers, deletion, status, HTTP endpoints, new metrics |
 | Unit (bin) | `src/commands/webhook.rs` | 9 | Admission response, cert generation, TLS validation, duration metric |
 | Unit (bin) | `src/commands/observability.rs` | 12 | Services, ServiceMonitors, Grafana dashboard, YAML validation |
+| Unit (bin) | `src/commands/deploy.rs` | 21 | RBAC, Deployments, PDBs, Namespace, YAML validation, labels |
 | Integration | `tests/admission_integration.rs` | 12 | Full admission pipeline, fail-open, multi-container, runtime check skip |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline from pod to health classification |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema round-trip |
@@ -494,12 +535,12 @@ Open Pull Request -> Merge into main.
 | 6 | Policy enforcement mode (audit/enforce, auto-patch workloads, inject probes+limits, 144+ tests) | Done |
 | 7 | Admission webhook (HTTPS, TLS, self-signed certs, fail-open, system ns bypass, 186 tests) | Done |
 | 8 | Prometheus expansion (metrics HTTP server, ServiceMonitors, Grafana dashboard, 207 tests) | Done |
+| 9 | High availability & production hardening (Dockerfile, manifests, Helm chart, 228 tests) | Done |
 
 ## Roadmap
 
 | Step | Milestone | Status |
 |---|---|---|
-| 9 | High availability & production hardening | Planned |
 | 10 | Multi-cluster governance & policy bundles | Planned |
 
 ------------------------------------------------------------------------
@@ -517,8 +558,8 @@ By the end of this project, the repository will contain:
 -   Helm chart support
 -   HA controller configuration
 
-This project serves as a platform engineering laboratory using a real
-9-node Kubernetes cluster.
+This project serves as a platform engineering laboratory deployed on a real
+9-node Kubernetes cluster with full Prometheus and Grafana observability.
 
 ------------------------------------------------------------------------
 
@@ -536,6 +577,7 @@ This project serves as a platform engineering laboratory using a real
 | `docs/Step_6_Policy_Enforcement.md` | Enforcement mode, remediation planning, patching architecture |
 | `docs/Step_7_Admission_Webhook.md` | Admission webhook, TLS, fail-open design, CLI commands |
 | `docs/Step_8_Prometheus_Expansion.md` | Metrics expansion, ServiceMonitors, Grafana dashboard |
+| `docs/Step_9_HA_Production_Hardening.md` | Dockerfile, deployment manifests, Helm chart |
 | `docs/Kubernetes_Observability_Controller_Progress.md` | Implementation progress tracker |
 | `docs/Kubernetes_Observability_Policy_Controller_Roadmap.md` | Full 10-step roadmap |
 | `docs/Rust_Foundations_for_Kubernetes_DevOps.md` | Rust language foundations reference |
@@ -557,4 +599,4 @@ DevOps & Platform Engineering Lab
 
 ------------------------------------------------------------------------
 
-**Last Updated:** 2026-02-23
+**Last Updated:** 2026-02-24

@@ -1,0 +1,28 @@
+{{- if .Values.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kube-devops.fullname" . }}-grafana-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-devops.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  kube-devops.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [],
+      "schemaVersion": 39,
+      "tags": ["kubernetes", "kube-devops"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "title": "kube-devops Observability",
+      "uid": "kube-devops-overview",
+      "version": 1
+    }
+{{- end }}

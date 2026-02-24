@@ -5,7 +5,7 @@ use tracing_subscriber::prelude::*;
 mod cli;
 mod commands;
 
-use cli::{Cli, CrdAction, Commands, ObservabilityAction, WebhookAction};
+use cli::{Cli, CrdAction, Commands, DeployAction, ObservabilityAction, WebhookAction};
 
 /// Wrap an async command so Ctrl+C produces a clean shutdown message.
 ///
@@ -79,6 +79,17 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Observability { action: ObservabilityAction::GenerateDashboard } => {
             print!("{}", commands::observability::generate_grafana_dashboard_configmap())
+        }
+
+        // Deploy subcommands
+        Commands::Deploy { action: DeployAction::GenerateAll } => {
+            print!("{}", commands::deploy::generate_all())
+        }
+        Commands::Deploy { action: DeployAction::GenerateRbac } => {
+            print!("{}", commands::deploy::generate_rbac())
+        }
+        Commands::Deploy { action: DeployAction::GenerateDeployments } => {
+            print!("{}", commands::deploy::generate_deployments())
         }
     }
 

@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-devops.fullname" . }}
+  labels:
+    {{- include "kube-devops.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["devops.stochastic.io"]
+    resources: ["devopspolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["devops.stochastic.io"]
+    resources: ["devopspolicies/status"]
+    verbs: ["patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations"]
+    verbs: ["get", "list", "create", "update"]

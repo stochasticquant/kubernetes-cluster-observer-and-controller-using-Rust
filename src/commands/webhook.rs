@@ -513,6 +513,7 @@ webhooks:
         name: {service_name}
         namespace: {namespace}
         path: /validate
+        port: 8443
       caBundle: {ca_b64}
     failurePolicy: Ignore
     sideEffects: None

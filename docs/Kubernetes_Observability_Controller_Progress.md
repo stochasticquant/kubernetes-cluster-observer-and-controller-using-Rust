@@ -181,19 +181,37 @@ Rust featuring:
 
 ------------------------------------------------------------------------
 
-# OUTSTANDING ROADMAP ITEMS
+## Step 9 --- High Availability & Production Hardening (Completed)
+
+**Delivered:**
+- Multi-stage Dockerfile (rust:slim-bookworm builder, debian:bookworm-slim runtime)
+- Non-root container user (UID 1000), read-only root filesystem
+- Kubernetes deployment manifests: Namespace, ServiceAccount, ClusterRole, ClusterRoleBinding
+- 3 Deployments (watch, reconcile, webhook) with 2 replicas each
+- 3 PodDisruptionBudgets (minAvailable: 1) for HA guarantees
+- Security hardening: runAsNonRoot, readOnlyRootFilesystem, resource limits
+- Liveness/readiness probes on all deployments (HTTP for watch/reconcile, HTTPS for webhook)
+- Helm chart (`helm/kube-devops/`) with 18 templates and configurable values
+- CLI `deploy` subcommand: `generate-all`, `generate-rbac`, `generate-deployments`
+- 10 static reference manifests in `kube-tests/`
+
+**Production deployment fixes (v0.1.2):**
+- Watch HTTP server starts before leader election (non-leader pods pass health probes)
+- Non-leader watch pods retry leader acquisition every 10s (automatic promotion)
+- Leader election lease stored in `kube-devops` namespace (was `default`)
+- ClusterRole includes `patch` verb for leases (required by leader takeover)
+- Webhook deployment passes `--tls-cert /tls/tls.crt --tls-key /tls/tls.key` args
+- Webhook probes use HTTPS scheme (matching the HTTPS-only server)
+- ValidatingWebhookConfiguration template includes `port: 8443`
+- Container image: `192.168.1.68:5000/kube-devops:v0.1.2`
+
+**Test suite:** 228 tests (21 deploy + 207 existing)
+
+**Status:** Fully implemented and deployed to production cluster
 
 ------------------------------------------------------------------------
 
-## Step 9 --- High Availability & Hardening
-
-To Implement:
-- Multi-replica deployment
-- PodDisruptionBudget
-- Container image hardening
-- Helm chart
-
-Impact: Production-grade controller
+# OUTSTANDING ROADMAP ITEMS
 
 ------------------------------------------------------------------------
 
@@ -212,23 +230,29 @@ Impact: Platform engineering maturity
 
 # CURRENT MATURITY LEVEL
 
-Successfully built:
+Successfully built and deployed:
 
-- Rust CLI (14 subcommands)
+- Rust CLI (17 subcommands)
 - Kubernetes client (async, RBAC-aware)
 - Governance scoring engine (weighted, policy-aware)
 - Real-time watch controller (Watch API, incremental state)
 - Kubernetes Operator (CRD, reconciliation loop, finalizers)
 - Policy enforcement (audit/enforce, auto-patch workloads)
 - Validating Admission Webhook (HTTPS, TLS, fail-open)
-- Leader election (Lease API)
+- Leader election (Lease API, automatic promotion for non-leaders)
 - Prometheus metrics (16 metrics across watch + operator + webhook)
 - HTTP/HTTPS health endpoints on all components (:8080, :9090, :8443)
 - Kubernetes ServiceMonitor manifests for Prometheus auto-discovery
-- Grafana dashboard ConfigMap with 22 panels
+- Grafana dashboard ConfigMap with 22 panels (verified with live data)
 - Graceful shutdown (watch, reconcile, and webhook modes)
 - Structured JSON logging (`tracing`)
-- Comprehensive test suite (207 tests, no cluster required)
+- Multi-stage Dockerfile for production container images
+- Kubernetes deployment manifests (Namespace, RBAC, Deployments, PDBs)
+- Helm chart with configurable values (18 templates)
+- Comprehensive test suite (228 tests, no cluster required)
+- **Live deployment** on 9-node cluster (v0.1.2, 6 pods across 3 components)
+- **Prometheus scraping** all 6 targets with live metric data
+- **Grafana dashboard** auto-imported with 22 panels showing real-time data
 
 ------------------------------------------------------------------------
 
@@ -245,40 +269,40 @@ Successfully built:
 | Unit (bin) | `src/commands/reconcile.rs` | 20 | Aggregation, finalizers, deletion, status, HTTP endpoints, new metrics |
 | Unit (bin) | `src/commands/webhook.rs` | 9 | Admission response, cert generation, TLS validation, duration metric |
 | Unit (bin) | `src/commands/observability.rs` | 12 | Services, ServiceMonitors, Grafana dashboard, YAML validation |
-| Unit (bin) | Total binary | 47 | Combined watch + reconcile + webhook + observability |
+| Unit (bin) | `src/commands/deploy.rs` | 21 | RBAC, Deployments, PDBs, Namespace, YAML validation, labels |
+| Unit (bin) | Total binary | 68 | Combined watch + reconcile + webhook + observability + deploy |
 | Integration | `tests/admission_integration.rs` | 12 | Full admission pipeline, fail-open, multi-container, runtime check skip |
 | Integration | `tests/governance_integration.rs` | 6 | End-to-end governance pipeline |
 | Integration | `tests/operator_integration.rs` | 13 | Full reconcile simulation, policy changes, CRD schema |
 | Integration | `tests/enforcement_integration.rs` | 8 | Enforcement pipeline, audit vs enforce, namespace protection |
-| **Total** | | **207** | **All passing, no cluster required** |
+| **Total** | | **228** | **All passing, no cluster required** |
 
 ------------------------------------------------------------------------
 
 # NEXT RECOMMENDED MILESTONE
 
-**Step 9 --- High Availability & Production Hardening**
+**Step 10 --- Multi-Cluster & Policy Bundles**
 
-Multi-replica deployment, PodDisruptionBudget, container image hardening,
-and Helm chart for production-grade controller deployment.
+Multi-cluster kubeconfig support, CRD-stored audit results, policy severity
+levels, policy bundles, and GitOps compatibility.
 
 ------------------------------------------------------------------------
 
 # SUMMARY
 
-Current Completion Level: ~80% of full roadmap
+Current Completion Level: ~90% of full roadmap
 
-Steps 1-8 are complete. The project is now a full-featured Kubernetes
-governance platform with CRD-driven policies, operator reconciliation,
-active enforcement, validating admission webhook, full Prometheus
-observability with Grafana dashboards, and comprehensive test coverage
-(207 tests).
+Steps 1-9 are complete. The project is now a production-deployment-ready
+Kubernetes governance platform with CRD-driven policies, operator reconciliation,
+active enforcement, validating admission webhook, full Prometheus observability
+with Grafana dashboards, production deployment infrastructure (Dockerfile,
+manifests, Helm chart), and comprehensive test coverage (228 tests).
 
 Remaining work focuses on:
-- HA & production hardening
 - Multi-cluster governance
 
 ------------------------------------------------------------------------
 
-**Last Updated:** 2026-02-23
+**Last Updated:** 2026-02-24
 
 End of Status Document

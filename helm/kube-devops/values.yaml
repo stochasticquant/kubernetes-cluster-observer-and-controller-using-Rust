@@ -1,0 +1,25 @@
+image:
+  repository: 192.168.1.68:5000/kube-devops
+  tag: v0.1.2
+  pullPolicy: IfNotPresent
+
+replicaCount: 2
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "100m"
+  limits:
+    memory: "128Mi"
+    cpu: "250m"
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+
+grafanaDashboard:
+  enabled: true
+
+pdb:
+  enabled: true
+  minAvailable: 1

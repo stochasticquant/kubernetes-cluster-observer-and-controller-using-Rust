@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kube-devops.fullname" . }}-watch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-devops.labels" . | nindent 4 }}
+    app.kubernetes.io/component: watch
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kube-devops.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: watch
+  template:
+    metadata:
+      labels:
+        {{- include "kube-devops.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: watch
+    spec:
+      serviceAccountName: {{ include "kube-devops.fullname" . }}
+      containers:
+        - name: {{ include "kube-devops.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "watch"
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true

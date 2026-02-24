@@ -1,6 +1,7 @@
 pub mod analyze;
 pub mod check;
 pub mod crd;
+pub mod deploy;
 pub mod list;
 pub mod observability;
 pub mod reconcile;
