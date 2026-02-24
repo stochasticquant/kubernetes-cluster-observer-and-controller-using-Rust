@@ -48,8 +48,12 @@ pub fn add_metrics(cluster: &mut PodMetrics, pod: &PodMetrics) {
 pub fn subtract_metrics(cluster: &mut PodMetrics, pod: &PodMetrics) {
     cluster.total_pods = cluster.total_pods.saturating_sub(pod.total_pods);
     cluster.latest_tag = cluster.latest_tag.saturating_sub(pod.latest_tag);
-    cluster.missing_liveness = cluster.missing_liveness.saturating_sub(pod.missing_liveness);
-    cluster.missing_readiness = cluster.missing_readiness.saturating_sub(pod.missing_readiness);
+    cluster.missing_liveness = cluster
+        .missing_liveness
+        .saturating_sub(pod.missing_liveness);
+    cluster.missing_readiness = cluster
+        .missing_readiness
+        .saturating_sub(pod.missing_readiness);
     cluster.high_restarts = cluster.high_restarts.saturating_sub(pod.high_restarts);
     cluster.pending = cluster.pending.saturating_sub(pod.pending);
 }
@@ -57,7 +61,10 @@ pub fn subtract_metrics(cluster: &mut PodMetrics, pod: &PodMetrics) {
 /* ============================= POD EVALUATION ============================= */
 
 pub fn evaluate_pod(pod: &Pod) -> PodMetrics {
-    let mut m = PodMetrics { total_pods: 1, ..Default::default() };
+    let mut m = PodMetrics {
+        total_pods: 1,
+        ..Default::default()
+    };
 
     if let Some(spec) = &pod.spec {
         for c in &spec.containers {
@@ -114,10 +121,12 @@ pub fn detect_violations(pod: &Pod) -> Vec<&'static str> {
 /* ============================= NAMESPACE FILTER ============================= */
 
 pub fn is_system_namespace(ns: &str) -> bool {
-    ns.starts_with("kube-") || ns.ends_with("-system") || matches!(
-        ns,
-        "cert-manager" | "istio-system" | "monitoring" | "observability" | "argocd"
-    )
+    ns.starts_with("kube-")
+        || ns.ends_with("-system")
+        || matches!(
+            ns,
+            "cert-manager" | "istio-system" | "monitoring" | "observability" | "argocd"
+        )
 }
 
 /* ============================= SCORING ============================= */
@@ -157,7 +166,10 @@ pub fn classify_health(score: u32) -> &'static str {
 /// Only checks that the policy explicitly enables are counted.
 /// Omitted fields (`None`) are treated as disabled (not checked).
 pub fn evaluate_pod_with_policy(pod: &Pod, policy: &DevOpsPolicySpec) -> PodMetrics {
-    let mut m = PodMetrics { total_pods: 1, ..Default::default() };
+    let mut m = PodMetrics {
+        total_pods: 1,
+        ..Default::default()
+    };
 
     let restart_threshold = policy.max_restart_count.unwrap_or(i32::MAX);
 
@@ -189,9 +201,7 @@ pub fn evaluate_pod_with_policy(pod: &Pod, policy: &DevOpsPolicySpec) -> PodMetr
             }
         }
 
-        if policy.forbid_pending_duration.is_some()
-            && status.phase.as_deref() == Some("Pending")
-        {
+        if policy.forbid_pending_duration.is_some() && status.phase.as_deref() == Some("Pending") {
             m.pending += 1;
         }
     }
@@ -235,10 +245,7 @@ pub fn severity_multiplier(severity: &Severity) -> u32 {
 }
 
 /// Resolve the effective severity for a violation type, using overrides if present.
-pub fn effective_severity(
-    violation_type: &str,
-    overrides: Option<&SeverityOverrides>,
-) -> Severity {
+pub fn effective_severity(violation_type: &str, overrides: Option<&SeverityOverrides>) -> Severity {
     if let Some(ovr) = overrides {
         let specific = match violation_type {
             "latest_tag" => &ovr.latest_tag,
@@ -266,11 +273,21 @@ pub fn calculate_health_score_with_severity(
 
     let weights = ScoringWeights::default();
 
-    let raw = (metrics.latest_tag * weights.latest_tag * severity_multiplier(&effective_severity("latest_tag", overrides)))
-        + (metrics.missing_liveness * weights.missing_liveness * severity_multiplier(&effective_severity("missing_liveness", overrides)))
-        + (metrics.missing_readiness * weights.missing_readiness * severity_multiplier(&effective_severity("missing_readiness", overrides)))
-        + (metrics.high_restarts * weights.high_restarts * severity_multiplier(&effective_severity("high_restarts", overrides)))
-        + (metrics.pending * weights.pending * severity_multiplier(&effective_severity("pending", overrides)));
+    let raw = (metrics.latest_tag
+        * weights.latest_tag
+        * severity_multiplier(&effective_severity("latest_tag", overrides)))
+        + (metrics.missing_liveness
+            * weights.missing_liveness
+            * severity_multiplier(&effective_severity("missing_liveness", overrides)))
+        + (metrics.missing_readiness
+            * weights.missing_readiness
+            * severity_multiplier(&effective_severity("missing_readiness", overrides)))
+        + (metrics.high_restarts
+            * weights.high_restarts
+            * severity_multiplier(&effective_severity("high_restarts", overrides)))
+        + (metrics.pending
+            * weights.pending
+            * severity_multiplier(&effective_severity("pending", overrides)));
 
     let per_pod = raw / metrics.total_pods;
     let capped = per_pod.min(100);
@@ -356,9 +373,7 @@ pub fn detect_violations_detailed(pod: &Pod, policy: &DevOpsPolicySpec) -> Vec<V
             }
         }
 
-        if policy.forbid_pending_duration.is_some()
-            && status.phase.as_deref() == Some("Pending")
-        {
+        if policy.forbid_pending_duration.is_some() && status.phase.as_deref() == Some("Pending") {
             violations.push(ViolationDetail {
                 violation_type: "pending".to_string(),
                 severity: effective_severity("pending", overrides),
@@ -410,9 +425,7 @@ pub fn detect_violations_with_policy(pod: &Pod, policy: &DevOpsPolicySpec) -> Ve
             }
         }
 
-        if policy.forbid_pending_duration.is_some()
-            && status.phase.as_deref() == Some("Pending")
-        {
+        if policy.forbid_pending_duration.is_some() && status.phase.as_deref() == Some("Pending") {
             violations.push("pending");
         }
     }
@@ -423,9 +436,7 @@ pub fn detect_violations_with_policy(pod: &Pod, policy: &DevOpsPolicySpec) -> Ve
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::core::v1::{
-        Container, ContainerStatus, Pod, PodSpec, PodStatus, Probe,
-    };
+    use k8s_openapi::api::core::v1::{Container, ContainerStatus, Pod, PodSpec, PodStatus, Probe};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
     fn make_test_pod(
@@ -437,9 +448,8 @@ mod tests {
         restart_count: i32,
         phase: &str,
     ) -> Pod {
-        let probes = |has: bool| -> Option<Probe> {
-            if has { Some(Probe::default()) } else { None }
-        };
+        let probes =
+            |has: bool| -> Option<Probe> { if has { Some(Probe::default()) } else { None } };
 
         Pod {
             metadata: ObjectMeta {
@@ -672,7 +682,12 @@ mod tests {
     #[test]
     fn test_add_metrics_basic() {
         let mut cluster = PodMetrics::default();
-        let pod = PodMetrics { total_pods: 1, latest_tag: 1, missing_liveness: 1, ..Default::default() };
+        let pod = PodMetrics {
+            total_pods: 1,
+            latest_tag: 1,
+            missing_liveness: 1,
+            ..Default::default()
+        };
         add_metrics(&mut cluster, &pod);
         assert_eq!(cluster.total_pods, 1);
         assert_eq!(cluster.latest_tag, 1);
@@ -681,8 +696,16 @@ mod tests {
 
     #[test]
     fn test_subtract_metrics_basic() {
-        let mut cluster = PodMetrics { total_pods: 5, latest_tag: 3, ..Default::default() };
-        let pod = PodMetrics { total_pods: 2, latest_tag: 1, ..Default::default() };
+        let mut cluster = PodMetrics {
+            total_pods: 5,
+            latest_tag: 3,
+            ..Default::default()
+        };
+        let pod = PodMetrics {
+            total_pods: 2,
+            latest_tag: 1,
+            ..Default::default()
+        };
         subtract_metrics(&mut cluster, &pod);
         assert_eq!(cluster.total_pods, 3);
         assert_eq!(cluster.latest_tag, 2);
@@ -690,8 +713,14 @@ mod tests {
 
     #[test]
     fn test_subtract_metrics_saturating_underflow() {
-        let mut cluster = PodMetrics { total_pods: 1, ..Default::default() };
-        let pod = PodMetrics { total_pods: 5, ..Default::default() };
+        let mut cluster = PodMetrics {
+            total_pods: 1,
+            ..Default::default()
+        };
+        let pod = PodMetrics {
+            total_pods: 5,
+            ..Default::default()
+        };
         subtract_metrics(&mut cluster, &pod);
         assert_eq!(cluster.total_pods, 0);
     }
@@ -700,8 +729,12 @@ mod tests {
     fn test_add_then_subtract_roundtrip() {
         let mut cluster = PodMetrics::default();
         let pod = PodMetrics {
-            total_pods: 1, latest_tag: 1, missing_liveness: 1,
-            missing_readiness: 1, high_restarts: 2, pending: 1,
+            total_pods: 1,
+            latest_tag: 1,
+            missing_liveness: 1,
+            missing_readiness: 1,
+            high_restarts: 2,
+            pending: 1,
         };
         add_metrics(&mut cluster, &pod);
         subtract_metrics(&mut cluster, &pod);
@@ -723,7 +756,10 @@ mod tests {
 
     #[test]
     fn test_score_fully_healthy() {
-        let m = PodMetrics { total_pods: 5, ..Default::default() };
+        let m = PodMetrics {
+            total_pods: 5,
+            ..Default::default()
+        };
         assert_eq!(calculate_health_score(&m), 100);
     }
 
@@ -761,7 +797,10 @@ mod tests {
     #[test]
     fn test_score_capped_at_100() {
         // Zero violations → 100
-        let m = PodMetrics { total_pods: 100, ..Default::default() };
+        let m = PodMetrics {
+            total_pods: 100,
+            ..Default::default()
+        };
         assert_eq!(calculate_health_score(&m), 100);
     }
 
@@ -995,7 +1034,10 @@ mod tests {
     #[test]
     fn test_effective_severity_no_overrides() {
         assert_eq!(effective_severity("latest_tag", None), Severity::High);
-        assert_eq!(effective_severity("high_restarts", None), Severity::Critical);
+        assert_eq!(
+            effective_severity("high_restarts", None),
+            Severity::Critical
+        );
     }
 
     #[test]
@@ -1023,7 +1065,10 @@ mod tests {
 
     #[test]
     fn test_health_score_with_severity_healthy() {
-        let m = PodMetrics { total_pods: 5, ..Default::default() };
+        let m = PodMetrics {
+            total_pods: 5,
+            ..Default::default()
+        };
         assert_eq!(calculate_health_score_with_severity(&m, None), 100);
     }
 
@@ -1038,7 +1083,12 @@ mod tests {
         let without = calculate_health_score(&m);
         let with = calculate_health_score_with_severity(&m, None);
         // latest_tag default severity is High (x2), so with severity should penalize more
-        assert!(with < without, "severity score {} should be less than base score {}", with, without);
+        assert!(
+            with < without,
+            "severity score {} should be less than base score {}",
+            with,
+            without
+        );
     }
 
     #[test]
@@ -1094,13 +1144,33 @@ mod tests {
 
     #[test]
     fn test_detect_violations_detailed_all_enabled() {
-        let pod = make_test_pod("web-pod", "prod", "nginx:latest", false, false, 10, "Pending");
+        let pod = make_test_pod(
+            "web-pod",
+            "prod",
+            "nginx:latest",
+            false,
+            false,
+            10,
+            "Pending",
+        );
         let policy = all_enabled_policy();
         let details = detect_violations_detailed(&pod, &policy);
-        assert!(details.len() >= 4, "should have at least 4 violations, got {}", details.len());
+        assert!(
+            details.len() >= 4,
+            "should have at least 4 violations, got {}",
+            details.len()
+        );
         assert!(details.iter().any(|v| v.violation_type == "latest_tag"));
-        assert!(details.iter().any(|v| v.violation_type == "missing_liveness"));
-        assert!(details.iter().any(|v| v.violation_type == "missing_readiness"));
+        assert!(
+            details
+                .iter()
+                .any(|v| v.violation_type == "missing_liveness")
+        );
+        assert!(
+            details
+                .iter()
+                .any(|v| v.violation_type == "missing_readiness")
+        );
         assert!(details.iter().any(|v| v.violation_type == "high_restarts"));
     }
 

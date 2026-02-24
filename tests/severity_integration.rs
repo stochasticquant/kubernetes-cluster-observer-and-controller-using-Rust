@@ -87,10 +87,16 @@ fn test_severity_pipeline_detailed_violations() {
     let violations = governance::detect_violations_detailed(&pod, &policy);
     assert_eq!(violations.len(), 2);
 
-    let latest = violations.iter().find(|v| v.violation_type == "latest_tag").unwrap();
+    let latest = violations
+        .iter()
+        .find(|v| v.violation_type == "latest_tag")
+        .unwrap();
     assert_eq!(latest.severity, Severity::Critical);
 
-    let liveness = violations.iter().find(|v| v.violation_type == "missing_liveness").unwrap();
+    let liveness = violations
+        .iter()
+        .find(|v| v.violation_type == "missing_liveness")
+        .unwrap();
     assert_eq!(liveness.severity, Severity::Low);
 }
 
@@ -105,7 +111,10 @@ fn test_bundles_generate_correct_policies() {
     assert_eq!(baseline.spec.enforcement_mode, Some(EnforcementMode::Audit));
 
     let restricted = bundles::get_bundle("restricted").unwrap();
-    assert_eq!(restricted.spec.enforcement_mode, Some(EnforcementMode::Enforce));
+    assert_eq!(
+        restricted.spec.enforcement_mode,
+        Some(EnforcementMode::Enforce)
+    );
     assert!(restricted.spec.severity_overrides.is_some());
 
     let permissive = bundles::get_bundle("permissive").unwrap();
@@ -117,9 +126,15 @@ fn test_bundle_policy_evaluation() {
     use kube_devops::bundles;
 
     let restricted = bundles::get_bundle("restricted").unwrap();
-    let pods = vec![
-        make_test_pod("a", "prod", "nginx:latest", false, false, 10, "Pending"),
-    ];
+    let pods = vec![make_test_pod(
+        "a",
+        "prod",
+        "nginx:latest",
+        false,
+        false,
+        10,
+        "Pending",
+    )];
 
     let mut aggregate = governance::PodMetrics::default();
     let mut total_violations = 0u32;
@@ -130,12 +145,18 @@ fn test_bundle_policy_evaluation() {
         total_violations += v.len() as u32;
     }
 
-    assert!(total_violations >= 4, "restricted should catch many violations, got {total_violations}");
+    assert!(
+        total_violations >= 4,
+        "restricted should catch many violations, got {total_violations}"
+    );
     let score = governance::calculate_health_score_with_severity(
         &aggregate,
         restricted.spec.severity_overrides.as_ref(),
     );
-    assert!(score < 80, "score should be unhealthy with many Critical violations, got {score}");
+    assert!(
+        score < 80,
+        "score should be unhealthy with many Critical violations, got {score}"
+    );
 }
 
 #[test]
@@ -152,19 +173,25 @@ fn test_severity_backward_compat_no_overrides() {
     assert_eq!(violations.len(), 2);
 
     // Default severities should apply
-    let latest = violations.iter().find(|v| v.violation_type == "latest_tag").unwrap();
+    let latest = violations
+        .iter()
+        .find(|v| v.violation_type == "latest_tag")
+        .unwrap();
     assert_eq!(latest.severity, Severity::High); // default for latest_tag
 
-    let liveness = violations.iter().find(|v| v.violation_type == "missing_liveness").unwrap();
+    let liveness = violations
+        .iter()
+        .find(|v| v.violation_type == "missing_liveness")
+        .unwrap();
     assert_eq!(liveness.severity, Severity::Medium); // default for missing_liveness
 }
 
 #[test]
 fn test_severity_admission_integration() {
-    use kube_devops::admission::validate_pod_admission_with_severity;
+    use k8s_openapi::api::core::v1::Pod;
     use k8s_openapi::api::core::v1::{Container, PodSpec, Probe};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-    use k8s_openapi::api::core::v1::Pod;
+    use kube_devops::admission::validate_pod_admission_with_severity;
 
     let pod = Pod {
         metadata: ObjectMeta {

@@ -97,7 +97,10 @@ pub fn generate_deployment(
     volumes: &str,
     probe_scheme: &str,
 ) -> String {
-    let args_yaml: String = args.iter().map(|a| format!("            - \"{a}\"\n")).collect();
+    let args_yaml: String = args
+        .iter()
+        .map(|a| format!("            - \"{a}\"\n"))
+        .collect();
 
     let probe_path = "/healthz";
     let readiness_path = "/readyz";
@@ -185,7 +188,21 @@ pub fn generate_deployment_reconcile() -> String {
 pub fn generate_deployment_webhook() -> String {
     let volume_mounts = "            - name: tls-certs\n              mountPath: /tls\n              readOnly: true\n";
     let volumes = "        - name: tls-certs\n          secret:\n            secretName: kube-devops-webhook-tls\n";
-    generate_deployment("webhook", 8443, &["webhook", "serve", "--tls-cert", "/tls/tls.crt", "--tls-key", "/tls/tls.key"], volume_mounts, volumes, "HTTPS")
+    generate_deployment(
+        "webhook",
+        8443,
+        &[
+            "webhook",
+            "serve",
+            "--tls-cert",
+            "/tls/tls.crt",
+            "--tls-key",
+            "/tls/tls.key",
+        ],
+        volume_mounts,
+        volumes,
+        "HTTPS",
+    )
 }
 
 /* ============================= PDB HELPER ============================= */
@@ -276,7 +293,10 @@ mod tests {
         assert_eq!(doc["kind"], "ServiceAccount");
         assert_eq!(doc["metadata"]["name"], "kube-devops");
         assert_eq!(doc["metadata"]["namespace"], "kube-devops");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/name"], "kube-devops");
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/name"],
+            "kube-devops"
+        );
     }
 
     #[test]
@@ -285,7 +305,9 @@ mod tests {
         let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("valid YAML");
 
         assert_eq!(doc["kind"], "ClusterRole");
-        let rules = doc["rules"].as_sequence().expect("rules should be a sequence");
+        let rules = doc["rules"]
+            .as_sequence()
+            .expect("rules should be a sequence");
         assert_eq!(rules.len(), 7, "ClusterRole should have 7 rules");
     }
 
@@ -401,7 +423,10 @@ mod tests {
 
         assert_eq!(doc["kind"], "Namespace");
         assert_eq!(doc["metadata"]["name"], "kube-devops");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/name"], "kube-devops");
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/name"],
+            "kube-devops"
+        );
     }
 
     // ── YAML parsability tests ──
@@ -470,10 +495,22 @@ mod tests {
         ] {
             let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("valid YAML");
             let resources = &doc["spec"]["template"]["spec"]["containers"][0]["resources"];
-            assert!(!resources["requests"]["memory"].is_null(), "requests.memory should be set");
-            assert!(!resources["requests"]["cpu"].is_null(), "requests.cpu should be set");
-            assert!(!resources["limits"]["memory"].is_null(), "limits.memory should be set");
-            assert!(!resources["limits"]["cpu"].is_null(), "limits.cpu should be set");
+            assert!(
+                !resources["requests"]["memory"].is_null(),
+                "requests.memory should be set"
+            );
+            assert!(
+                !resources["requests"]["cpu"].is_null(),
+                "requests.cpu should be set"
+            );
+            assert!(
+                !resources["limits"]["memory"].is_null(),
+                "limits.memory should be set"
+            );
+            assert!(
+                !resources["limits"]["cpu"].is_null(),
+                "limits.cpu should be set"
+            );
         }
     }
 
@@ -505,7 +542,11 @@ mod tests {
     fn test_generate_deployments_has_three_docs() {
         let output = generate_deployments();
         let docs: Vec<&str> = output.split("---\n").collect();
-        assert_eq!(docs.len(), 3, "generate_deployments should produce 3 documents");
+        assert_eq!(
+            docs.len(),
+            3,
+            "generate_deployments should produce 3 documents"
+        );
     }
 
     // ── Label consistency tests ──
@@ -514,7 +555,10 @@ mod tests {
     fn test_label_consistency_namespace() {
         let yaml = generate_namespace();
         let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("valid YAML");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/name"], "kube-devops");
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/name"],
+            "kube-devops"
+        );
     }
 
     #[test]
@@ -525,7 +569,10 @@ mod tests {
             generate_deployment_webhook(),
         ] {
             let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("valid YAML");
-            assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/name"], "kube-devops");
+            assert_eq!(
+                doc["metadata"]["labels"]["app.kubernetes.io/name"],
+                "kube-devops"
+            );
             assert_eq!(
                 doc["spec"]["template"]["metadata"]["labels"]["app.kubernetes.io/name"],
                 "kube-devops"
@@ -541,7 +588,10 @@ mod tests {
             generate_cluster_role_binding(),
         ] {
             let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).expect("valid YAML");
-            assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/name"], "kube-devops");
+            assert_eq!(
+                doc["metadata"]["labels"]["app.kubernetes.io/name"],
+                "kube-devops"
+            );
         }
     }
 }

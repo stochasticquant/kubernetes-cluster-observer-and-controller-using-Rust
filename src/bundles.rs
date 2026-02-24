@@ -29,8 +29,7 @@ pub fn get_bundle(name: &str) -> Option<PolicyBundle> {
 fn baseline_bundle() -> PolicyBundle {
     PolicyBundle {
         name: "baseline".to_string(),
-        description: "Forbid :latest tags and require readiness probes. Audit mode."
-            .to_string(),
+        description: "Forbid :latest tags and require readiness probes. Audit mode.".to_string(),
         spec: DevOpsPolicySpec {
             forbid_latest_tag: Some(true),
             require_readiness_probe: Some(true),

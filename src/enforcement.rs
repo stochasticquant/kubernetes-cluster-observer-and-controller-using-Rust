@@ -2,8 +2,8 @@ use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
 use k8s_openapi::api::core::v1::{Container, Pod, Probe, ResourceRequirements, TCPSocketAction};
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
-use kube::api::{Api, Patch, PatchParams};
 use kube::Client;
+use kube::api::{Api, Patch, PatchParams};
 use std::collections::BTreeMap;
 use tracing::{info, warn};
 
@@ -22,7 +22,12 @@ pub struct WorkloadRef {
 impl WorkloadRef {
     /// Canonical key used for deduplication: "kind/namespace/name".
     pub fn key(&self) -> String {
-        format!("{}/{}/{}", self.kind.to_lowercase(), self.namespace, self.name)
+        format!(
+            "{}/{}/{}",
+            self.kind.to_lowercase(),
+            self.namespace,
+            self.name
+        )
     }
 }
 
@@ -65,9 +70,7 @@ const PROTECTED_NAMESPACES: &[&str] = &[
 
 /// Returns true if the namespace should never have enforcement applied.
 pub fn is_protected_namespace(ns: &str) -> bool {
-    PROTECTED_NAMESPACES.contains(&ns)
-        || ns.starts_with("kube-")
-        || ns.ends_with("-system")
+    PROTECTED_NAMESPACES.contains(&ns) || ns.starts_with("kube-") || ns.ends_with("-system")
 }
 
 /* ============================= ENFORCEMENT CHECKS ============================= */
@@ -169,19 +172,39 @@ pub fn build_default_resources(config: &DefaultResourceConfig) -> ResourceRequir
 
     requests.insert(
         "cpu".to_string(),
-        Quantity(config.cpu_request.clone().unwrap_or_else(|| "100m".to_string())),
+        Quantity(
+            config
+                .cpu_request
+                .clone()
+                .unwrap_or_else(|| "100m".to_string()),
+        ),
     );
     requests.insert(
         "memory".to_string(),
-        Quantity(config.memory_request.clone().unwrap_or_else(|| "128Mi".to_string())),
+        Quantity(
+            config
+                .memory_request
+                .clone()
+                .unwrap_or_else(|| "128Mi".to_string()),
+        ),
     );
     limits.insert(
         "cpu".to_string(),
-        Quantity(config.cpu_limit.clone().unwrap_or_else(|| "500m".to_string())),
+        Quantity(
+            config
+                .cpu_limit
+                .clone()
+                .unwrap_or_else(|| "500m".to_string()),
+        ),
     );
     limits.insert(
         "memory".to_string(),
-        Quantity(config.memory_limit.clone().unwrap_or_else(|| "256Mi".to_string())),
+        Quantity(
+            config
+                .memory_limit
+                .clone()
+                .unwrap_or_else(|| "256Mi".to_string()),
+        ),
     );
 
     ResourceRequirements {
@@ -218,7 +241,12 @@ pub fn plan_remediation(pod: &Pod, policy: &DevOpsPolicySpec) -> Option<Remediat
 
     let workload = resolve_owner(pod)?;
 
-    let containers = pod.spec.as_ref().map(|s| &s.containers).cloned().unwrap_or_default();
+    let containers = pod
+        .spec
+        .as_ref()
+        .map(|s| &s.containers)
+        .cloned()
+        .unwrap_or_default();
 
     let mut actions = Vec::new();
 
@@ -266,12 +294,15 @@ pub fn build_container_patches(
         period_seconds: None,
     });
 
-    let resource_config = policy.default_resources.clone().unwrap_or(DefaultResourceConfig {
-        cpu_request: None,
-        cpu_limit: None,
-        memory_request: None,
-        memory_limit: None,
-    });
+    let resource_config = policy
+        .default_resources
+        .clone()
+        .unwrap_or(DefaultResourceConfig {
+            cpu_request: None,
+            cpu_limit: None,
+            memory_request: None,
+            memory_limit: None,
+        });
 
     let mut container_patches: Vec<serde_json::Value> = containers
         .iter()
@@ -284,8 +315,7 @@ pub fn build_container_patches(
                 if let Some(container) = containers.get(*container_index) {
                     let probe = build_default_probe(container, &probe_config);
                     if let Some(patch) = container_patches.get_mut(*container_index) {
-                        patch["livenessProbe"] = serde_json::to_value(&probe)
-                            .unwrap_or_default();
+                        patch["livenessProbe"] = serde_json::to_value(&probe).unwrap_or_default();
                     }
                 }
             }
@@ -293,16 +323,14 @@ pub fn build_container_patches(
                 if let Some(container) = containers.get(*container_index) {
                     let probe = build_default_probe(container, &probe_config);
                     if let Some(patch) = container_patches.get_mut(*container_index) {
-                        patch["readinessProbe"] = serde_json::to_value(&probe)
-                            .unwrap_or_default();
+                        patch["readinessProbe"] = serde_json::to_value(&probe).unwrap_or_default();
                     }
                 }
             }
             RemediationAction::InjectResources { container_index } => {
                 let resources = build_default_resources(&resource_config);
                 if let Some(patch) = container_patches.get_mut(*container_index) {
-                    patch["resources"] = serde_json::to_value(&resources)
-                        .unwrap_or_default();
+                    patch["resources"] = serde_json::to_value(&resources).unwrap_or_default();
                 }
             }
         }
@@ -355,8 +383,7 @@ pub async fn apply_remediation(
 
     let result = match plan.workload.kind.as_str() {
         "Deployment" => {
-            let api: Api<Deployment> =
-                Api::namespaced(client.clone(), &plan.workload.namespace);
+            let api: Api<Deployment> = Api::namespaced(client.clone(), &plan.workload.namespace);
             api.patch(
                 &plan.workload.name,
                 &PatchParams::apply("kube-devops-operator"),
@@ -366,8 +393,7 @@ pub async fn apply_remediation(
             .map(|_| ())
         }
         "StatefulSet" => {
-            let api: Api<StatefulSet> =
-                Api::namespaced(client.clone(), &plan.workload.namespace);
+            let api: Api<StatefulSet> = Api::namespaced(client.clone(), &plan.workload.namespace);
             api.patch(
                 &plan.workload.name,
                 &PatchParams::apply("kube-devops-operator"),
@@ -377,8 +403,7 @@ pub async fn apply_remediation(
             .map(|_| ())
         }
         "DaemonSet" => {
-            let api: Api<DaemonSet> =
-                Api::namespaced(client.clone(), &plan.workload.namespace);
+            let api: Api<DaemonSet> = Api::namespaced(client.clone(), &plan.workload.namespace);
             api.patch(
                 &plan.workload.name,
                 &PatchParams::apply("kube-devops-operator"),
@@ -435,8 +460,7 @@ async fn get_workload_containers(
 ) -> Result<Vec<Container>, kube::Error> {
     match plan.workload.kind.as_str() {
         "Deployment" => {
-            let api: Api<Deployment> =
-                Api::namespaced(client.clone(), &plan.workload.namespace);
+            let api: Api<Deployment> = Api::namespaced(client.clone(), &plan.workload.namespace);
             let dep = api.get(&plan.workload.name).await?;
             Ok(dep
                 .spec
@@ -445,8 +469,7 @@ async fn get_workload_containers(
                 .unwrap_or_default())
         }
         "StatefulSet" => {
-            let api: Api<StatefulSet> =
-                Api::namespaced(client.clone(), &plan.workload.namespace);
+            let api: Api<StatefulSet> = Api::namespaced(client.clone(), &plan.workload.namespace);
             let sts = api.get(&plan.workload.name).await?;
             Ok(sts
                 .spec
@@ -455,8 +478,7 @@ async fn get_workload_containers(
                 .unwrap_or_default())
         }
         "DaemonSet" => {
-            let api: Api<DaemonSet> =
-                Api::namespaced(client.clone(), &plan.workload.namespace);
+            let api: Api<DaemonSet> = Api::namespaced(client.clone(), &plan.workload.namespace);
             let ds = api.get(&plan.workload.name).await?;
             Ok(ds
                 .spec
@@ -570,9 +592,8 @@ mod tests {
         has_liveness: bool,
         has_readiness: bool,
     ) -> Pod {
-        let probes = |has: bool| -> Option<Probe> {
-            if has { Some(Probe::default()) } else { None }
-        };
+        let probes =
+            |has: bool| -> Option<Probe> { if has { Some(Probe::default()) } else { None } };
 
         Pod {
             metadata: ObjectMeta {
@@ -638,7 +659,15 @@ mod tests {
 
     #[test]
     fn test_resolve_owner_deployment() {
-        let pod = make_pod_with_owner("p", "default", "img:1.0", "Deployment", "web-app", true, true);
+        let pod = make_pod_with_owner(
+            "p",
+            "default",
+            "img:1.0",
+            "Deployment",
+            "web-app",
+            true,
+            true,
+        );
         let owner = resolve_owner(&pod);
         assert!(owner.is_some());
         let owner = owner.unwrap();
@@ -665,7 +694,15 @@ mod tests {
 
     #[test]
     fn test_resolve_owner_replicaset_derives_deployment() {
-        let pod = make_pod_with_owner("p", "default", "img:1.0", "ReplicaSet", "web-app-5d4f8b9c7f", true, true);
+        let pod = make_pod_with_owner(
+            "p",
+            "default",
+            "img:1.0",
+            "ReplicaSet",
+            "web-app-5d4f8b9c7f",
+            true,
+            true,
+        );
         let owner = resolve_owner(&pod).unwrap();
         assert_eq!(owner.kind, "Deployment");
         assert_eq!(owner.name, "web-app");
@@ -835,15 +872,31 @@ mod tests {
 
     #[test]
     fn test_plan_missing_probes() {
-        let pod = make_pod_with_owner("p", "prod", "img:1.0", "ReplicaSet", "web-abc123", false, false);
+        let pod = make_pod_with_owner(
+            "p",
+            "prod",
+            "img:1.0",
+            "ReplicaSet",
+            "web-abc123",
+            false,
+            false,
+        );
         let policy = make_enforce_policy();
         let plan = plan_remediation(&pod, &policy);
         assert!(plan.is_some());
         let plan = plan.unwrap();
         assert_eq!(plan.workload.kind, "Deployment");
         assert_eq!(plan.workload.name, "web");
-        assert!(plan.actions.iter().any(|a| matches!(a, RemediationAction::InjectLivenessProbe { .. })));
-        assert!(plan.actions.iter().any(|a| matches!(a, RemediationAction::InjectReadinessProbe { .. })));
+        assert!(
+            plan.actions
+                .iter()
+                .any(|a| matches!(a, RemediationAction::InjectLivenessProbe { .. }))
+        );
+        assert!(
+            plan.actions
+                .iter()
+                .any(|a| matches!(a, RemediationAction::InjectReadinessProbe { .. }))
+        );
     }
 
     #[test]
@@ -853,7 +906,11 @@ mod tests {
         let plan = plan_remediation(&pod, &policy);
         assert!(plan.is_some());
         let plan = plan.unwrap();
-        assert!(plan.actions.iter().any(|a| matches!(a, RemediationAction::InjectResources { .. })));
+        assert!(
+            plan.actions
+                .iter()
+                .any(|a| matches!(a, RemediationAction::InjectResources { .. }))
+        );
     }
 
     #[test]
@@ -888,7 +945,15 @@ mod tests {
 
     #[test]
     fn test_plan_protected_namespace_returns_none() {
-        let pod = make_pod_with_owner("p", "kube-system", "img:1.0", "DaemonSet", "kube-proxy", false, false);
+        let pod = make_pod_with_owner(
+            "p",
+            "kube-system",
+            "img:1.0",
+            "DaemonSet",
+            "kube-proxy",
+            false,
+            false,
+        );
         let policy = make_enforce_policy();
         let plan = plan_remediation(&pod, &policy);
         assert!(plan.is_none());
@@ -933,15 +998,18 @@ mod tests {
     fn test_plan_latest_tag_not_patchable() {
         // Pod only has :latest tag violation (probes present, resources configured
         // via no default_resources in policy)
-        let mut pod = make_pod_with_owner("p", "prod", "img:latest", "Deployment", "api", true, true);
+        let mut pod =
+            make_pod_with_owner("p", "prod", "img:latest", "Deployment", "api", true, true);
         if let Some(spec) = &mut pod.spec {
             spec.containers[0].resources = Some(ResourceRequirements {
-                requests: Some(BTreeMap::from([
-                    ("cpu".to_string(), Quantity("100m".to_string())),
-                ])),
-                limits: Some(BTreeMap::from([
-                    ("cpu".to_string(), Quantity("500m".to_string())),
-                ])),
+                requests: Some(BTreeMap::from([(
+                    "cpu".to_string(),
+                    Quantity("100m".to_string()),
+                )])),
+                limits: Some(BTreeMap::from([(
+                    "cpu".to_string(),
+                    Quantity("500m".to_string()),
+                )])),
                 ..Default::default()
             });
         }

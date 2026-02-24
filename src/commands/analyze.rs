@@ -10,12 +10,15 @@ use kube_devops::governance::{
 pub async fn run() -> anyhow::Result<()> {
     println!("Running DevOps analysis...\n");
 
-    let client = Client::try_default().await
+    let client = Client::try_default()
+        .await
         .context("Failed to connect to Kubernetes cluster. Is your kubeconfig valid?")?;
 
     let pods: Api<Pod> = Api::all(client);
 
-    let pod_list = pods.list(&ListParams::default()).await
+    let pod_list = pods
+        .list(&ListParams::default())
+        .await
         .context("Failed to list pods. Check RBAC permissions.")?;
 
     let mut report = PodMetrics::default();

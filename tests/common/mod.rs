@@ -1,6 +1,4 @@
-use k8s_openapi::api::core::v1::{
-    Container, ContainerStatus, Pod, PodSpec, PodStatus, Probe,
-};
+use k8s_openapi::api::core::v1::{Container, ContainerStatus, Pod, PodSpec, PodStatus, Probe};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
 use kube_devops::crd::{DevOpsPolicySpec, Severity, SeverityOverrides};
 
@@ -14,9 +12,7 @@ pub fn make_test_pod(
     restart_count: i32,
     phase: &str,
 ) -> Pod {
-    let probes = |has: bool| -> Option<Probe> {
-        if has { Some(Probe::default()) } else { None }
-    };
+    let probes = |has: bool| -> Option<Probe> { if has { Some(Probe::default()) } else { None } };
 
     Pod {
         metadata: ObjectMeta {
@@ -83,9 +79,7 @@ pub fn make_test_pod_with_owner(
     has_liveness: bool,
     has_readiness: bool,
 ) -> Pod {
-    let probes = |has: bool| -> Option<Probe> {
-        if has { Some(Probe::default()) } else { None }
-    };
+    let probes = |has: bool| -> Option<Probe> { if has { Some(Probe::default()) } else { None } };
 
     Pod {
         metadata: ObjectMeta {

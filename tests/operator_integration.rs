@@ -125,9 +125,15 @@ fn test_reconcile_empty_namespace() {
 
 #[test]
 fn test_reconcile_empty_policy_skips_all_checks() {
-    let pods = vec![
-        make_test_pod("bad", "prod", "img:latest", false, false, 10, "Pending"),
-    ];
+    let pods = vec![make_test_pod(
+        "bad",
+        "prod",
+        "img:latest",
+        false,
+        false,
+        10,
+        "Pending",
+    )];
 
     let status = simulate_reconcile(&pods, &empty_policy());
 
@@ -140,7 +146,15 @@ fn test_reconcile_empty_policy_skips_all_checks() {
 #[test]
 fn test_reconcile_system_namespace_excluded() {
     let pods = vec![
-        make_test_pod("sys", "kube-system", "img:latest", false, false, 10, "Pending"),
+        make_test_pod(
+            "sys",
+            "kube-system",
+            "img:latest",
+            false,
+            false,
+            10,
+            "Pending",
+        ),
         make_test_pod("app", "production", "nginx:1.25", true, true, 0, "Running"),
     ];
 
@@ -155,9 +169,15 @@ fn test_reconcile_system_namespace_excluded() {
 
 #[test]
 fn test_policy_change_affects_score() {
-    let pods = vec![
-        make_test_pod("a", "prod", "nginx:latest", false, true, 0, "Running"),
-    ];
+    let pods = vec![make_test_pod(
+        "a",
+        "prod",
+        "nginx:latest",
+        false,
+        true,
+        0,
+        "Running",
+    )];
 
     // Strict policy: catches latest_tag + missing_liveness
     let strict = all_enabled_policy();
@@ -177,9 +197,15 @@ fn test_policy_change_affects_score() {
 
 #[test]
 fn test_custom_restart_threshold() {
-    let pods = vec![
-        make_test_pod("a", "prod", "nginx:1.25", true, true, 5, "Running"),
-    ];
+    let pods = vec![make_test_pod(
+        "a",
+        "prod",
+        "nginx:1.25",
+        true,
+        true,
+        5,
+        "Running",
+    )];
 
     // Threshold 3: restart_count=5 exceeds → violation
     let low_threshold = DevOpsPolicySpec {
@@ -203,14 +229,24 @@ fn test_custom_restart_threshold() {
 
 #[test]
 fn test_status_message_contains_classification() {
-    let pods = vec![
-        make_test_pod("a", "prod", "nginx:1.25", true, true, 0, "Running"),
-    ];
+    let pods = vec![make_test_pod(
+        "a",
+        "prod",
+        "nginx:1.25",
+        true,
+        true,
+        0,
+        "Running",
+    )];
     let status = simulate_reconcile(&pods, &all_enabled_policy());
     let msg = status.message.unwrap();
 
-    assert!(msg.contains("Healthy") || msg.contains("Stable")
-        || msg.contains("Degraded") || msg.contains("Critical"));
+    assert!(
+        msg.contains("Healthy")
+            || msg.contains("Stable")
+            || msg.contains("Degraded")
+            || msg.contains("Critical")
+    );
     assert!(msg.contains("violations"));
     assert!(msg.contains("pods"));
 }

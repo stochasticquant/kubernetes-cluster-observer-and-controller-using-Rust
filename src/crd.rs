@@ -441,10 +441,21 @@ mod tests {
         let deserialized: DevOpsPolicySpec =
             serde_json::from_str(&json).expect("should deserialize");
 
-        assert_eq!(deserialized.enforcement_mode, Some(EnforcementMode::Enforce));
-        assert_eq!(deserialized.default_probe.as_ref().unwrap().tcp_port, Some(8080));
         assert_eq!(
-            deserialized.default_resources.as_ref().unwrap().cpu_request.as_deref(),
+            deserialized.enforcement_mode,
+            Some(EnforcementMode::Enforce)
+        );
+        assert_eq!(
+            deserialized.default_probe.as_ref().unwrap().tcp_port,
+            Some(8080)
+        );
+        assert_eq!(
+            deserialized
+                .default_resources
+                .as_ref()
+                .unwrap()
+                .cpu_request
+                .as_deref(),
             Some("100m")
         );
     }
@@ -538,7 +549,12 @@ mod tests {
 
     #[test]
     fn test_severity_deserialize_roundtrip() {
-        for severity in [Severity::Critical, Severity::High, Severity::Medium, Severity::Low] {
+        for severity in [
+            Severity::Critical,
+            Severity::High,
+            Severity::Medium,
+            Severity::Low,
+        ] {
             let json = serde_json::to_string(&severity).expect("should serialize");
             let deserialized: Severity = serde_json::from_str(&json).expect("should deserialize");
             assert_eq!(deserialized, severity);
@@ -632,8 +648,7 @@ mod tests {
             message: "container 'nginx' uses :latest tag".to_string(),
         };
         let json = serde_json::to_string(&violation).expect("should serialize");
-        let deserialized: AuditViolation =
-            serde_json::from_str(&json).expect("should deserialize");
+        let deserialized: AuditViolation = serde_json::from_str(&json).expect("should deserialize");
         assert_eq!(deserialized.pod_name, "web-abc123");
         assert_eq!(deserialized.severity, Severity::High);
         assert_eq!(deserialized.violation_type, "latest_tag");
@@ -736,13 +751,7 @@ mod tests {
     fn test_two_crds_different_names() {
         let policy_crd = DevOpsPolicy::crd();
         let audit_crd = PolicyAuditResult::crd();
-        assert_ne!(
-            policy_crd.spec.names.kind,
-            audit_crd.spec.names.kind
-        );
-        assert_ne!(
-            policy_crd.spec.names.plural,
-            audit_crd.spec.names.plural
-        );
+        assert_ne!(policy_crd.spec.names.kind, audit_crd.spec.names.kind);
+        assert_ne!(policy_crd.spec.names.plural, audit_crd.spec.names.plural);
     }
 }

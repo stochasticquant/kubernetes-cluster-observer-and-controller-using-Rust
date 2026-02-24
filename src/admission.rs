@@ -63,8 +63,7 @@ pub fn validate_pod_admission(pod: &Pod, policy: &DevOpsPolicySpec) -> Admission
             ));
         }
 
-        if admission_policy.require_readiness_probe.unwrap_or(false)
-            && c.readiness_probe.is_none()
+        if admission_policy.require_readiness_probe.unwrap_or(false) && c.readiness_probe.is_none()
         {
             violations.push(format!(
                 "container '{}' missing readiness probe",
@@ -441,7 +440,10 @@ mod tests {
             vec![container_with("nginx", "nginx:latest", true, true)],
         );
         let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::Critical);
-        assert!(verdict.allowed, "High severity violation should be allowed with Critical threshold");
+        assert!(
+            verdict.allowed,
+            "High severity violation should be allowed with Critical threshold"
+        );
     }
 
     #[test]
@@ -456,7 +458,10 @@ mod tests {
             vec![container_with("nginx", "nginx:latest", true, true)],
         );
         let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::High);
-        assert!(!verdict.allowed, "High severity violation should be denied with High threshold");
+        assert!(
+            !verdict.allowed,
+            "High severity violation should be denied with High threshold"
+        );
     }
 
     #[test]
@@ -488,7 +493,10 @@ mod tests {
             vec![container_with("nginx", "nginx:1.25", true, false)],
         );
         let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::Medium);
-        assert!(verdict.allowed, "Low severity violation should be allowed with Medium threshold");
+        assert!(
+            verdict.allowed,
+            "Low severity violation should be allowed with Medium threshold"
+        );
     }
 
     #[test]
@@ -507,7 +515,10 @@ mod tests {
             vec![container_with("nginx", "nginx:latest", true, true)],
         );
         let verdict = validate_pod_admission_with_severity(&pod, &policy, &Severity::High);
-        assert!(verdict.allowed, "Low severity (overridden) should be allowed with High threshold");
+        assert!(
+            verdict.allowed,
+            "Low severity (overridden) should be allowed with High threshold"
+        );
     }
 
     #[test]
@@ -517,9 +528,17 @@ mod tests {
             "pod",
             vec![container_with("nginx", "nginx:1.25", true, true)],
         );
-        for threshold in [Severity::Low, Severity::Medium, Severity::High, Severity::Critical] {
+        for threshold in [
+            Severity::Low,
+            Severity::Medium,
+            Severity::High,
+            Severity::Critical,
+        ] {
             let verdict = validate_pod_admission_with_severity(&pod, &policy, &threshold);
-            assert!(verdict.allowed, "compliant pod should be allowed at any threshold");
+            assert!(
+                verdict.allowed,
+                "compliant pod should be allowed at any threshold"
+            );
         }
     }
 
@@ -533,11 +552,8 @@ mod tests {
             spec: None,
             status: None,
         };
-        let verdict = validate_pod_admission_with_severity(
-            &pod,
-            &all_enabled_policy(),
-            &Severity::Low,
-        );
+        let verdict =
+            validate_pod_admission_with_severity(&pod, &all_enabled_policy(), &Severity::Low);
         assert!(verdict.allowed);
     }
 

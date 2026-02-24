@@ -40,12 +40,7 @@ fn make_admission_pod(name: &str, namespace: &str, containers: Vec<Container>) -
     }
 }
 
-fn container_with(
-    name: &str,
-    image: &str,
-    has_liveness: bool,
-    has_readiness: bool,
-) -> Container {
+fn container_with(name: &str, image: &str, has_liveness: bool, has_readiness: bool) -> Container {
     let probe = || -> Option<Probe> { Some(Probe::default()) };
 
     Container {
@@ -90,7 +85,12 @@ fn test_full_admission_pipeline_deny_latest() {
     assert!(!verdict.allowed);
     assert_eq!(verdict.violations.len(), 1);
     assert!(verdict.violations[0].contains(":latest"));
-    assert!(verdict.message.unwrap().starts_with("Denied by DevOpsPolicy:"));
+    assert!(
+        verdict
+            .message
+            .unwrap()
+            .starts_with("Denied by DevOpsPolicy:")
+    );
 }
 
 #[test]

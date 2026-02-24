@@ -2,11 +2,11 @@ use std::net::SocketAddr;
 use std::sync::LazyLock;
 
 use anyhow::{Context, Result};
+use axum::Router;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::Router;
 use kube::api::ListParams;
 use kube::{Api, Client};
 use prometheus::{Encoder, Histogram, IntCounterVec, Registry, TextEncoder};
@@ -93,9 +93,7 @@ pub async fn serve(addr_str: &str, tls_cert: &str, tls_key: &str) -> Result<()> 
     validate_tls_files(tls_cert, tls_key)?;
     println!("loaded ({}, {})", tls_cert, tls_key);
 
-    let addr: SocketAddr = addr_str
-        .parse()
-        .context("Invalid address format")?;
+    let addr: SocketAddr = addr_str.parse().context("Invalid address format")?;
 
     println!("  HTTPS server ................ https://{addr}");
     println!();
@@ -227,10 +225,7 @@ async fn webhook_metrics_handler() -> impl IntoResponse {
 
 /* ============================= ADMISSION HANDLER ============================= */
 
-async fn admission_handler(
-    State(state): State<WebhookState>,
-    body: String,
-) -> impl IntoResponse {
+async fn admission_handler(State(state): State<WebhookState>, body: String) -> impl IntoResponse {
     let _timer = WEBHOOK_DURATION.start_timer();
 
     let review: serde_json::Value = match serde_json::from_str(&body) {
@@ -252,10 +247,7 @@ async fn admission_handler(
         }
     };
 
-    let uid = review["request"]["uid"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let uid = review["request"]["uid"].as_str().unwrap_or("").to_string();
     let operation = review["request"]["operation"]
         .as_str()
         .unwrap_or("UNKNOWN")
@@ -271,10 +263,7 @@ async fn admission_handler(
         WEBHOOK_REQUESTS
             .with_label_values(&[&operation, "true"])
             .inc();
-        return (
-            StatusCode::OK,
-            build_admission_response(&uid, true, None),
-        );
+        return (StatusCode::OK, build_admission_response(&uid, true, None));
     }
 
     // Extract pod from the admission request
@@ -286,10 +275,7 @@ async fn admission_handler(
             WEBHOOK_REQUESTS
                 .with_label_values(&[&operation, "true"])
                 .inc();
-            return (
-                StatusCode::OK,
-                build_admission_response(&uid, true, None),
-            );
+            return (StatusCode::OK, build_admission_response(&uid, true, None));
         }
     };
 
@@ -302,10 +288,7 @@ async fn admission_handler(
             WEBHOOK_REQUESTS
                 .with_label_values(&[&operation, "true"])
                 .inc();
-            return (
-                StatusCode::OK,
-                build_admission_response(&uid, true, None),
-            );
+            return (StatusCode::OK, build_admission_response(&uid, true, None));
         }
     };
 
@@ -386,15 +369,19 @@ fn build_admission_response(uid: &str, allowed: bool, message: Option<&str>) -> 
 
 /* ============================= CERT GENERATION ============================= */
 
-pub fn generate_certs(service_name: &str, namespace: &str, output_dir: &str, ip_sans: &[String]) -> Result<()> {
+pub fn generate_certs(
+    service_name: &str,
+    namespace: &str,
+    output_dir: &str,
+    ip_sans: &[String],
+) -> Result<()> {
     println!("Generating self-signed TLS certificates...\n");
 
     let (ca_pem, cert_pem, key_pem) = generate_self_signed_certs(service_name, namespace, ip_sans)?;
 
     let output_path = std::path::Path::new(output_dir);
     if !output_path.exists() {
-        std::fs::create_dir_all(output_path)
-            .context("Failed to create output directory")?;
+        std::fs::create_dir_all(output_path).context("Failed to create output directory")?;
     }
 
     let ca_path = output_path.join("ca.crt");
@@ -492,8 +479,7 @@ pub fn generate_self_signed_certs(
 pub fn install_config(service_name: &str, namespace: &str, ca_bundle_path: &str) -> Result<()> {
     use base64::Engine;
 
-    let ca_bytes =
-        std::fs::read(ca_bundle_path).context("Failed to read CA bundle file")?;
+    let ca_bytes = std::fs::read(ca_bundle_path).context("Failed to read CA bundle file")?;
     let ca_b64 = base64::engine::general_purpose::STANDARD.encode(&ca_bytes);
 
     let yaml = format!(
@@ -626,7 +612,10 @@ mod tests {
         let result = validate_tls_files("/nonexistent/cert.pem", "/nonexistent/key.pem");
         assert!(result.is_err());
         assert!(
-            result.unwrap_err().to_string().contains("certificate file not found")
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("certificate file not found")
         );
     }
 
@@ -639,7 +628,12 @@ mod tests {
 
         let result = validate_tls_files(cert_path.to_str().unwrap(), "/nonexistent/key.pem");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("key file not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("key file not found")
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

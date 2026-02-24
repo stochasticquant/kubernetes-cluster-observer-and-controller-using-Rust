@@ -1,35 +1,24 @@
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    sync::LazyLock,
-    time::Duration,
-};
+use std::{collections::HashMap, net::SocketAddr, sync::LazyLock, time::Duration};
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
-use kube::{Api, Client};
-use kube_runtime::watcher::{watcher, Config, Event};
 use k8s_openapi::api::{
-    core::v1::Pod,
     coordination::v1::{Lease, LeaseSpec},
+    core::v1::Pod,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{MicroTime, ObjectMeta};
 use k8s_openapi::chrono::{self, Utc};
+use kube::{Api, Client};
+use kube_runtime::watcher::{Config, Event, watcher};
 
-use axum::{
-    routing::get,
-    Router,
-    response::IntoResponse,
-    http::StatusCode,
-};
+use axum::{Router, http::StatusCode, response::IntoResponse, routing::get};
 use prometheus::{Encoder, IntCounter, IntGauge, IntGaugeVec, Registry, TextEncoder};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::{signal, time::sleep};
 use tracing::info;
 
 use kube_devops::governance::{
-    self, PodMetrics, add_metrics, subtract_metrics,
-    calculate_health_score,
+    self, PodMetrics, add_metrics, calculate_health_score, subtract_metrics,
 };
 
 /* ============================= CONFIG ============================= */
@@ -44,33 +33,50 @@ const LEASE_RENEW_INTERVAL: Duration = Duration::from_secs(5);
 static REGISTRY: LazyLock<Registry> = LazyLock::new(Registry::new);
 
 static CLUSTER_SCORE: LazyLock<IntGauge> = LazyLock::new(|| {
-    let g = IntGauge::new("cluster_health_score", "Cluster governance health score (0-100)")
-        .expect("metric definition is valid");
-    REGISTRY.register(Box::new(g.clone())).expect("metric not yet registered");
+    let g = IntGauge::new(
+        "cluster_health_score",
+        "Cluster governance health score (0-100)",
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(g.clone()))
+        .expect("metric not yet registered");
     g
 });
 
 static NAMESPACE_SCORE: LazyLock<IntGaugeVec> = LazyLock::new(|| {
     let g = IntGaugeVec::new(
-        prometheus::Opts::new("namespace_health_score", "Namespace governance health score (0-100)"),
+        prometheus::Opts::new(
+            "namespace_health_score",
+            "Namespace governance health score (0-100)",
+        ),
         &["namespace"],
     )
     .expect("metric definition is valid");
-    REGISTRY.register(Box::new(g.clone())).expect("metric not yet registered");
+    REGISTRY
+        .register(Box::new(g.clone()))
+        .expect("metric not yet registered");
     g
 });
 
 static POD_EVENTS: LazyLock<IntCounter> = LazyLock::new(|| {
     let c = IntCounter::new("pod_events_total", "Total pod events processed")
         .expect("metric definition is valid");
-    REGISTRY.register(Box::new(c.clone())).expect("metric not yet registered");
+    REGISTRY
+        .register(Box::new(c.clone()))
+        .expect("metric not yet registered");
     c
 });
 
 static PODS_TRACKED: LazyLock<IntGauge> = LazyLock::new(|| {
-    let g = IntGauge::new("pods_tracked_total", "Total pods currently tracked by the watch controller")
-        .expect("metric definition is valid");
-    REGISTRY.register(Box::new(g.clone())).expect("metric not yet registered");
+    let g = IntGauge::new(
+        "pods_tracked_total",
+        "Total pods currently tracked by the watch controller",
+    )
+    .expect("metric definition is valid");
+    REGISTRY
+        .register(Box::new(g.clone()))
+        .expect("metric not yet registered");
     g
 });
 
@@ -91,7 +97,8 @@ pub async fn run() -> Result<()> {
     println!("Starting watch controller...\n");
     info!("controller_starting");
 
-    let client = Client::try_default().await
+    let client = Client::try_default()
+        .await
         .context("Failed to connect to Kubernetes cluster")?;
 
     print!("  Cluster connection .......... ");
@@ -99,10 +106,7 @@ pub async fn run() -> Result<()> {
         Ok(v) => println!("OK (v{}.{})", v.major, v.minor),
         Err(e) => {
             println!("FAIL");
-            anyhow::bail!(
-                "Cannot reach cluster: {}. Is the cluster running?",
-                e
-            );
+            anyhow::bail!("Cannot reach cluster: {}. Is the cluster running?", e);
         }
     }
 
@@ -118,9 +122,8 @@ pub async fn run() -> Result<()> {
     // Start HTTP server immediately so health probes pass even for non-leaders
     let http_state = cluster_state.clone();
     let http_shutdown = shutdown_tx.subscribe();
-    let http_handle = tokio::spawn(async move {
-        start_http_server(http_state, http_shutdown, addr).await
-    });
+    let http_handle =
+        tokio::spawn(async move { start_http_server(http_state, http_shutdown, addr).await });
 
     println!("  HTTP server ................. http://{addr}");
 
@@ -153,16 +156,12 @@ pub async fn run() -> Result<()> {
     // Spawn lease renewal
     let renewal_client = client.clone();
     let renewal_shutdown = shutdown_tx.subscribe();
-    tokio::spawn(async move {
-        lease_renewal_loop(renewal_client, renewal_shutdown).await
-    });
+    tokio::spawn(async move { lease_renewal_loop(renewal_client, renewal_shutdown).await });
 
     let watch_state = cluster_state.clone();
     let watch_shutdown = shutdown_tx.subscribe();
 
-    let watch_handle = tokio::spawn(async move {
-        watch_loop(watch_state, watch_shutdown).await
-    });
+    let watch_handle = tokio::spawn(async move { watch_loop(watch_state, watch_shutdown).await });
 
     signal::ctrl_c().await?;
     info!("shutdown_signal_received");
@@ -216,13 +215,11 @@ async fn acquire_leader(client: &Client) -> Result<bool> {
 
     let can_take = match &existing.spec {
         Some(spec) => {
-            let is_ours = spec.holder_identity.as_deref()
-                == Some("kube-devops-instance");
+            let is_ours = spec.holder_identity.as_deref() == Some("kube-devops-instance");
 
             let is_expired = spec.renew_time.as_ref().is_none_or(|t| {
                 let duration_secs = spec.lease_duration_seconds.unwrap_or(15) as i64;
-                Utc::now().signed_duration_since(t.0)
-                    > chrono::Duration::seconds(duration_secs)
+                Utc::now().signed_duration_since(t.0) > chrono::Duration::seconds(duration_secs)
             });
 
             is_ours || is_expired
@@ -246,20 +243,20 @@ async fn acquire_leader(client: &Client) -> Result<bool> {
         }
     });
 
-    match leases.patch(
-        LEASE_NAME,
-        &kube::api::PatchParams::default(),
-        &kube::api::Patch::Merge(&patch),
-    ).await {
+    match leases
+        .patch(
+            LEASE_NAME,
+            &kube::api::PatchParams::default(),
+            &kube::api::Patch::Merge(&patch),
+        )
+        .await
+    {
         Ok(_) => Ok(true),
         Err(_) => Ok(false),
     }
 }
 
-async fn lease_renewal_loop(
-    client: Client,
-    mut shutdown: broadcast::Receiver<()>,
-) {
+async fn lease_renewal_loop(client: Client, mut shutdown: broadcast::Receiver<()>) {
     let leases: Api<Lease> = Api::namespaced(client, LEASE_NAMESPACE);
 
     loop {
@@ -298,7 +295,8 @@ async fn watch_loop(
     cluster_state: std::sync::Arc<Mutex<ClusterState>>,
     mut shutdown: broadcast::Receiver<()>,
 ) -> Result<()> {
-    let client = Client::try_default().await
+    let client = Client::try_default()
+        .await
         .context("Failed to connect to Kubernetes cluster for watcher")?;
 
     let pods: Api<Pod> = Api::all(client);
@@ -437,10 +435,13 @@ pub(crate) fn build_router(state: std::sync::Arc<Mutex<ClusterState>>) -> Router
     Router::new()
         .route("/metrics", get(metrics_handler))
         .route("/healthz", get(|| async { (StatusCode::OK, "OK") }))
-        .route("/readyz", get({
-            let state = state.clone();
-            move || ready_handler(state.clone())
-        }))
+        .route(
+            "/readyz",
+            get({
+                let state = state.clone();
+                move || ready_handler(state.clone())
+            }),
+        )
 }
 
 async fn start_http_server(
@@ -450,7 +451,8 @@ async fn start_http_server(
 ) -> Result<()> {
     let app = build_router(state);
 
-    let listener = tokio::net::TcpListener::bind(addr).await
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
         .context("Failed to bind HTTP server on :8080")?;
 
     info!(addr = %addr, "http_server_started");
@@ -481,9 +483,15 @@ async fn metrics_handler() -> impl IntoResponse {
     match encoder.encode(&metric_families, &mut buffer) {
         Ok(_) => match String::from_utf8(buffer) {
             Ok(body) => (StatusCode::OK, body),
-            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "metrics encoding error".to_string()),
+            Err(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "metrics encoding error".to_string(),
+            ),
         },
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "metrics encoding error".to_string()),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "metrics encoding error".to_string(),
+        ),
     }
 }
 

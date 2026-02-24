@@ -67,9 +67,7 @@ spec:
     );
 
     if port == 8443 {
-        yaml.push_str(
-            "      tlsConfig:\n        insecureSkipVerify: true\n",
-        );
+        yaml.push_str("      tlsConfig:\n        insecureSkipVerify: true\n");
     }
 
     yaml
@@ -268,8 +266,14 @@ mod tests {
         assert_eq!(doc["kind"], "Service");
         assert_eq!(doc["metadata"]["name"], "kube-devops-watch");
         assert_eq!(doc["metadata"]["namespace"], "kube-devops");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/name"], "kube-devops");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/component"], "watch");
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/name"],
+            "kube-devops"
+        );
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/component"],
+            "watch"
+        );
         assert_eq!(doc["spec"]["ports"][0]["port"], 8080);
     }
 
@@ -280,7 +284,10 @@ mod tests {
 
         assert_eq!(doc["kind"], "Service");
         assert_eq!(doc["metadata"]["name"], "kube-devops-reconcile");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/component"], "reconcile");
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/component"],
+            "reconcile"
+        );
         assert_eq!(doc["spec"]["ports"][0]["port"], 9090);
     }
 
@@ -291,7 +298,10 @@ mod tests {
 
         assert_eq!(doc["kind"], "Service");
         assert_eq!(doc["metadata"]["name"], "kube-devops-webhook");
-        assert_eq!(doc["metadata"]["labels"]["app.kubernetes.io/component"], "webhook");
+        assert_eq!(
+            doc["metadata"]["labels"]["app.kubernetes.io/component"],
+            "webhook"
+        );
         assert_eq!(doc["spec"]["ports"][0]["port"], 8443);
     }
 
@@ -344,8 +354,8 @@ mod tests {
             generate_service_reconcile(),
             generate_service_webhook(),
         ] {
-            let _: serde_yaml::Value = serde_yaml::from_str(&yaml)
-                .expect("service YAML should be parseable");
+            let _: serde_yaml::Value =
+                serde_yaml::from_str(&yaml).expect("service YAML should be parseable");
         }
     }
 
@@ -356,8 +366,8 @@ mod tests {
             generate_service_monitor_reconcile(),
             generate_service_monitor_webhook(),
         ] {
-            let _: serde_yaml::Value = serde_yaml::from_str(&yaml)
-                .expect("ServiceMonitor YAML should be parseable");
+            let _: serde_yaml::Value =
+                serde_yaml::from_str(&yaml).expect("ServiceMonitor YAML should be parseable");
         }
     }
 
@@ -379,8 +389,13 @@ mod tests {
     #[test]
     fn test_dashboard_has_panels() {
         let dashboard = build_dashboard_json();
-        let panels = dashboard["panels"].as_array().expect("panels should be an array");
-        assert!(panels.len() >= 20, "dashboard should have at least 20 panels");
+        let panels = dashboard["panels"]
+            .as_array()
+            .expect("panels should be an array");
+        assert!(
+            panels.len() >= 20,
+            "dashboard should have at least 20 panels"
+        );
     }
 
     #[test]

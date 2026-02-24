@@ -25,7 +25,15 @@ fn test_single_healthy_pod_pipeline() {
 
 #[test]
 fn test_single_noncompliant_pod_pipeline() {
-    let pod = make_test_pod("bad", "staging", "nginx:latest", false, false, 10, "Pending");
+    let pod = make_test_pod(
+        "bad",
+        "staging",
+        "nginx:latest",
+        false,
+        false,
+        10,
+        "Pending",
+    );
 
     let metrics = governance::evaluate_pod(&pod);
     let violations = governance::detect_violations(&pod);
@@ -111,9 +119,33 @@ fn test_pod_lifecycle_add_remove() {
 #[test]
 fn test_system_namespace_filtering() {
     let pods = vec![
-        make_test_pod("a", "kube-system", "nginx:latest", false, false, 0, "Running"),
-        make_test_pod("b", "kube-flannel", "nginx:latest", false, false, 0, "Running"),
-        make_test_pod("c", "cert-manager", "nginx:latest", false, false, 0, "Running"),
+        make_test_pod(
+            "a",
+            "kube-system",
+            "nginx:latest",
+            false,
+            false,
+            0,
+            "Running",
+        ),
+        make_test_pod(
+            "b",
+            "kube-flannel",
+            "nginx:latest",
+            false,
+            false,
+            0,
+            "Running",
+        ),
+        make_test_pod(
+            "c",
+            "cert-manager",
+            "nginx:latest",
+            false,
+            false,
+            0,
+            "Running",
+        ),
         make_test_pod("d", "production", "nginx:1.25", true, true, 0, "Running"),
     ];
 

@@ -27,11 +27,7 @@ pub struct MultiClusterReport {
 /// List available kubeconfig contexts.
 pub fn list_contexts() -> anyhow::Result<Vec<String>> {
     let kubeconfig = kube::config::Kubeconfig::read()?;
-    Ok(kubeconfig
-        .contexts
-        .iter()
-        .map(|c| c.name.clone())
-        .collect())
+    Ok(kubeconfig.contexts.iter().map(|c| c.name.clone()).collect())
 }
 
 /// Create a kube Client for a specific kubeconfig context.

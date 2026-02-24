@@ -6,7 +6,7 @@ use kube_devops::crd::{
     AuditViolation, DevOpsPolicySpec, PolicyAuditResultSpec, Severity, SeverityOverrides,
 };
 use kube_devops::governance;
-use kube_devops::multi_cluster::{aggregate_report, ClusterEvaluation};
+use kube_devops::multi_cluster::{ClusterEvaluation, aggregate_report};
 
 // ══════════════════════════════════════════════════════════════════
 // Multi-cluster and audit result integration tests (no cluster required)
@@ -156,15 +156,24 @@ fn test_multi_cluster_with_severity_overrides() {
         ..Default::default()
     };
 
-    let pods = vec![
-        make_test_pod("bad", "prod", "nginx:latest", true, true, 0, "Running"),
-    ];
+    let pods = vec![make_test_pod(
+        "bad",
+        "prod",
+        "nginx:latest",
+        true,
+        true,
+        0,
+        "Running",
+    )];
 
     let eval = evaluate_pods_synthetic("prod", &pods, &policy);
     assert!(eval.total_violations > 0);
 
     // Verify severity is in the violation details
-    let latest_violation = eval.violations.iter().find(|v| v.violation_type == "latest_tag");
+    let latest_violation = eval
+        .violations
+        .iter()
+        .find(|v| v.violation_type == "latest_tag");
     assert!(latest_violation.is_some());
     assert_eq!(latest_violation.unwrap().severity, Severity::Critical);
 }

@@ -154,11 +154,7 @@ pub async fn import(file: &str, dry_run: bool) -> Result<()> {
 
         let policy: DevOpsPolicy = serde_yaml::from_str(trimmed)?;
         let name = policy.metadata.name.as_deref().unwrap_or("unnamed");
-        let ns = policy
-            .metadata
-            .namespace
-            .as_deref()
-            .unwrap_or("default");
+        let ns = policy.metadata.namespace.as_deref().unwrap_or("default");
 
         if dry_run {
             println!("[DRY-RUN] Would apply DevOpsPolicy '{name}' in namespace '{ns}'");
@@ -234,7 +230,11 @@ pub async fn diff(file: &str) -> Result<()> {
 fn diff_json(prefix: &str, remote: &serde_json::Value, local: &serde_json::Value, indent: &str) {
     match (remote, local) {
         (serde_json::Value::Object(r), serde_json::Value::Object(l)) => {
-            for key in r.keys().chain(l.keys()).collect::<std::collections::BTreeSet<_>>() {
+            for key in r
+                .keys()
+                .chain(l.keys())
+                .collect::<std::collections::BTreeSet<_>>()
+            {
                 let r_val = r.get(key);
                 let l_val = l.get(key);
                 match (r_val, l_val) {
@@ -343,7 +343,10 @@ spec:
             let bundle = bundles::get_bundle(bundle_name).unwrap();
             let spec_yaml = serde_yaml::to_string(&bundle.spec).unwrap();
             // Ensure the spec serializes without error
-            assert!(!spec_yaml.is_empty(), "spec for {bundle_name} should not be empty");
+            assert!(
+                !spec_yaml.is_empty(),
+                "spec for {bundle_name} should not be empty"
+            );
         }
     }
 

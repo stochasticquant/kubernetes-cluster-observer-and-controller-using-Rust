@@ -3,18 +3,18 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use axum::Router;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
-use axum::Router;
 use futures::StreamExt;
+use k8s_openapi::api::core::v1::Pod;
 use kube::api::{Api, Patch, PatchParams};
 use kube::runtime::controller::{Action, Controller};
 use kube::{Client, ResourceExt};
-use k8s_openapi::api::core::v1::Pod;
 use prometheus::{Encoder, Histogram, IntCounter, IntGaugeVec, Registry, TextEncoder};
-use tokio::sync::{broadcast, Mutex};
 use tokio::signal;
+use tokio::sync::{Mutex, broadcast};
 use tracing::{info, warn};
 
 use kube_devops::crd::{
@@ -203,10 +203,7 @@ pub async fn run() -> Result<()> {
         Ok(v) => println!("OK (v{}.{})", v.major, v.minor),
         Err(e) => {
             println!("FAIL");
-            anyhow::bail!(
-                "Cannot reach cluster: {}. Is the cluster running?",
-                e
-            );
+            anyhow::bail!("Cannot reach cluster: {}. Is the cluster running?", e);
         }
     }
 
@@ -233,12 +230,17 @@ pub async fn run() -> Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 9090));
 
     println!("  CRD watch ................... DevOpsPolicy.devops.stochastic.io/v1");
-    println!("  Requeue interval ............ {}s", REQUEUE_INTERVAL.as_secs());
+    println!(
+        "  Requeue interval ............ {}s",
+        REQUEUE_INTERVAL.as_secs()
+    );
     println!("  Metrics server .............. http://{addr}");
     println!();
     println!("  Available endpoints:");
     println!("    GET /healthz .............. Liveness probe (always 200 OK)");
-    println!("    GET /readyz ............... Readiness probe (503 until first reconcile, then 200)");
+    println!(
+        "    GET /readyz ............... Readiness probe (503 until first reconcile, then 200)"
+    );
     println!("    GET /metrics .............. Prometheus metrics scrape endpoint");
     println!();
     println!("Operator running. Press Ctrl+C to stop.\n");
@@ -253,9 +255,8 @@ pub async fn run() -> Result<()> {
     let http_state = reconcile_state.clone();
     let http_shutdown = shutdown_tx.subscribe();
 
-    let http_handle = tokio::spawn(async move {
-        start_metrics_server(http_state, http_shutdown, addr).await
-    });
+    let http_handle =
+        tokio::spawn(async move { start_metrics_server(http_state, http_shutdown, addr).await });
 
     let controller_state = reconcile_state.clone();
     let controller = Controller::new(policies, Default::default())
@@ -318,11 +319,8 @@ async fn reconcile(
     let generation = policy.metadata.generation;
 
     // ── Skip if already reconciled this generation ──
-    let already_reconciled = policy
-        .status
-        .as_ref()
-        .and_then(|s| s.observed_generation)
-        == generation;
+    let already_reconciled =
+        policy.status.as_ref().and_then(|s| s.observed_generation) == generation;
 
     if already_reconciled {
         info!(
@@ -512,8 +510,16 @@ async fn reconcile(
         violations: Some(total_violations),
         last_evaluated: Some(now.to_rfc3339()),
         message: Some(message),
-        remediations_applied: if enforce_mode { Some(remediations_applied) } else { None },
-        remediations_failed: if enforce_mode { Some(remediations_failed) } else { None },
+        remediations_applied: if enforce_mode {
+            Some(remediations_applied)
+        } else {
+            None
+        },
+        remediations_failed: if enforce_mode {
+            Some(remediations_failed)
+        } else {
+            None
+        },
         remediated_workloads: if remediated_workloads.is_empty() {
             None
         } else {
@@ -623,9 +629,7 @@ async fn create_audit_result(
         },
     );
 
-    audit_api
-        .create(&Default::default(), &audit_result)
-        .await?;
+    audit_api.create(&Default::default(), &audit_result).await?;
 
     AUDIT_RESULTS_TOTAL.inc();
 
@@ -636,9 +640,7 @@ async fn create_audit_result(
     );
 
     // Retention: keep last N results per policy
-    let existing = audit_api
-        .list(&Default::default())
-        .await?;
+    let existing = audit_api.list(&Default::default()).await?;
 
     let mut policy_results: Vec<_> = existing
         .items
@@ -651,15 +653,8 @@ async fn create_audit_result(
     if policy_results.len() > AUDIT_RETENTION {
         let to_delete = policy_results.len() - AUDIT_RETENTION;
         for result in policy_results.iter().take(to_delete) {
-            let name = result
-                .metadata
-                .name
-                .as_deref()
-                .unwrap_or_default();
-            if let Err(e) = audit_api
-                .delete(name, &Default::default())
-                .await
-            {
+            let name = result.metadata.name.as_deref().unwrap_or_default();
+            if let Err(e) = audit_api.delete(name, &Default::default()).await {
                 warn!(error = %e, name = %name, "audit_result_delete_failed");
             }
         }
@@ -767,10 +762,13 @@ pub(crate) fn build_reconcile_router(state: Arc<Mutex<ReconcileState>>) -> Route
     Router::new()
         .route("/metrics", get(reconcile_metrics_handler))
         .route("/healthz", get(|| async { (StatusCode::OK, "OK") }))
-        .route("/readyz", get({
-            let state = state.clone();
-            move || reconcile_ready_handler(state.clone())
-        }))
+        .route(
+            "/readyz",
+            get({
+                let state = state.clone();
+                move || reconcile_ready_handler(state.clone())
+            }),
+        )
 }
 
 async fn start_metrics_server(
@@ -780,7 +778,8 @@ async fn start_metrics_server(
 ) -> Result<()> {
     let app = build_reconcile_router(state);
 
-    let listener = tokio::net::TcpListener::bind(addr).await
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
         .context("Failed to bind metrics server on :9090")?;
 
     info!(addr = %addr, "reconcile_metrics_server_started");
@@ -811,9 +810,15 @@ async fn reconcile_metrics_handler() -> impl IntoResponse {
     match encoder.encode(&metric_families, &mut buffer) {
         Ok(_) => match String::from_utf8(buffer) {
             Ok(body) => (StatusCode::OK, body),
-            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "metrics encoding error".to_string()),
+            Err(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "metrics encoding error".to_string(),
+            ),
         },
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "metrics encoding error".to_string()),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "metrics encoding error".to_string(),
+        ),
     }
 }
 
@@ -825,10 +830,10 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
-    use tower::ServiceExt;
-    use kube_devops::crd::DevOpsPolicySpec;
     use k8s_openapi::api::core::v1::{Container, ContainerStatus, PodSpec, PodStatus, Probe};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+    use kube_devops::crd::DevOpsPolicySpec;
+    use tower::ServiceExt;
 
     fn test_reconcile_state(ready: bool) -> Arc<Mutex<ReconcileState>> {
         Arc::new(Mutex::new(ReconcileState { ready }))
@@ -843,13 +848,8 @@ mod tests {
         restart_count: i32,
         phase: &str,
     ) -> Pod {
-        let probes = |has: bool| -> Option<Probe> {
-            if has {
-                Some(Probe::default())
-            } else {
-                None
-            }
-        };
+        let probes =
+            |has: bool| -> Option<Probe> { if has { Some(Probe::default()) } else { None } };
 
         Pod {
             metadata: ObjectMeta {
@@ -969,7 +969,15 @@ mod tests {
         let policy = all_enabled_policy();
 
         let pods = vec![
-            make_test_pod("a", "kube-system", "nginx:latest", false, false, 0, "Running"),
+            make_test_pod(
+                "a",
+                "kube-system",
+                "nginx:latest",
+                false,
+                false,
+                0,
+                "Running",
+            ),
             make_test_pod("b", "prod", "nginx:1.25", true, true, 0, "Running"),
         ];
 

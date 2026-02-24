@@ -8,12 +8,15 @@ pub async fn run(resource: String) -> anyhow::Result<()> {
         anyhow::bail!("Unsupported resource '{}'. Supported: pods", resource);
     }
 
-    let client = Client::try_default().await
+    let client = Client::try_default()
+        .await
         .context("Failed to connect to Kubernetes cluster. Is your kubeconfig valid?")?;
 
     let pods: Api<Pod> = Api::all(client);
 
-    let pod_list = pods.list(&ListParams::default()).await
+    let pod_list = pods
+        .list(&ListParams::default())
+        .await
         .context("Failed to list pods. Check RBAC permissions.")?;
 
     let mut rows: Vec<(String, String, String, String)> = pod_list
@@ -21,12 +24,14 @@ pub async fn run(resource: String) -> anyhow::Result<()> {
         .map(|p| {
             let namespace = p.metadata.namespace.unwrap_or_default();
             let name = p.metadata.name.unwrap_or_default();
-            let phase = p.status
+            let phase = p
+                .status
                 .as_ref()
                 .and_then(|s| s.phase.as_deref())
                 .unwrap_or("Unknown")
                 .to_string();
-            let node = p.spec
+            let node = p
+                .spec
                 .as_ref()
                 .and_then(|s| s.node_name.as_deref())
                 .unwrap_or("Not Scheduled")
@@ -37,7 +42,10 @@ pub async fn run(resource: String) -> anyhow::Result<()> {
 
     rows.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
-    println!("{:<20} {:<60} {:<12} {:<15}", "NAMESPACE", "NAME", "STATUS", "NODE");
+    println!(
+        "{:<20} {:<60} {:<12} {:<15}",
+        "NAMESPACE", "NAME", "STATUS", "NODE"
+    );
     println!("{}", "-".repeat(107));
 
     for (namespace, name, phase, node) in &rows {

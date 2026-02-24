@@ -67,8 +67,7 @@ fn test_enforcement_pipeline_detect_plan_verify() {
     let policy = enforce_policy();
 
     // Step 1: detect violations
-    let violations =
-        kube_devops::governance::detect_violations_with_policy(&pod, &policy);
+    let violations = kube_devops::governance::detect_violations_with_policy(&pod, &policy);
     assert!(violations.contains(&"missing_liveness"));
     assert!(violations.contains(&"missing_readiness"));
 
@@ -98,7 +97,10 @@ fn test_audit_mode_never_produces_plans() {
 
     let policy = audit_policy();
     let plan = enforcement::plan_remediation(&pod, &policy);
-    assert!(plan.is_none(), "Audit mode should never produce remediation plans");
+    assert!(
+        plan.is_none(),
+        "Audit mode should never produce remediation plans"
+    );
 }
 
 #[test]
@@ -176,11 +178,22 @@ fn test_enforcement_deduplication_by_workload() {
 
 #[test]
 fn test_enforcement_skips_pods_without_owners() {
-    let pod = make_test_pod("orphan", "production", "nginx:1.25", false, false, 0, "Running");
+    let pod = make_test_pod(
+        "orphan",
+        "production",
+        "nginx:1.25",
+        false,
+        false,
+        0,
+        "Running",
+    );
 
     let policy = enforce_policy();
     let plan = enforcement::plan_remediation(&pod, &policy);
-    assert!(plan.is_none(), "Pods without owners should not be remediated");
+    assert!(
+        plan.is_none(),
+        "Pods without owners should not be remediated"
+    );
 }
 
 #[test]
@@ -202,9 +215,10 @@ fn test_enforcement_patch_structure() {
     let patch = enforcement::build_container_patches(&plan.actions, &containers, &policy);
 
     // Verify patch structure
-    assert!(patch["spec"]["template"]["metadata"]["annotations"]
-        ["devops.stochastic.io/patched-by"]
-        .is_string());
+    assert!(
+        patch["spec"]["template"]["metadata"]["annotations"]["devops.stochastic.io/patched-by"]
+            .is_string()
+    );
     assert!(patch["spec"]["template"]["spec"]["containers"].is_array());
 
     let container_patch = &patch["spec"]["template"]["spec"]["containers"][0];
@@ -233,7 +247,10 @@ fn test_enforcement_none_mode_same_as_audit() {
     };
 
     let plan = enforcement::plan_remediation(&pod, &policy);
-    assert!(plan.is_none(), "enforcement_mode: None should behave like audit");
+    assert!(
+        plan.is_none(),
+        "enforcement_mode: None should behave like audit"
+    );
 }
 
 #[test]

@@ -42,7 +42,10 @@ pub async fn analyze(
     // Resolve the policy spec
     let bundle_name = bundle_name.as_deref().unwrap_or("baseline");
     let bundle = bundles::get_bundle(bundle_name).ok_or_else(|| {
-        anyhow::anyhow!("Unknown bundle '{}'. Use 'policy bundle-list' to see available bundles.", bundle_name)
+        anyhow::anyhow!(
+            "Unknown bundle '{}'. Use 'policy bundle-list' to see available bundles.",
+            bundle_name
+        )
     })?;
 
     println!(
@@ -80,7 +83,10 @@ pub async fn analyze(
 
     // Print per-cluster results
     if per_cluster {
-        println!("{:<30} {:>6} {:>6} {:>12} STATUS", "CLUSTER", "SCORE", "PODS", "VIOLATIONS");
+        println!(
+            "{:<30} {:>6} {:>6} {:>12} STATUS",
+            "CLUSTER", "SCORE", "PODS", "VIOLATIONS"
+        );
         println!("{}", "-".repeat(75));
         for eval in &evaluations {
             println!(
@@ -97,7 +103,8 @@ pub async fn analyze(
 
     // Print aggregate report
     let report = multi_cluster::aggregate_report(evaluations);
-    println!("Aggregate: {} — score {}/100 across {} cluster(s)",
+    println!(
+        "Aggregate: {} — score {}/100 across {} cluster(s)",
         report.aggregate_classification,
         report.aggregate_score,
         report.clusters.len()
@@ -110,8 +117,8 @@ pub async fn analyze(
 
 #[cfg(test)]
 mod tests {
-    use kube_devops::multi_cluster::{aggregate_report, ClusterEvaluation};
     use kube_devops::governance;
+    use kube_devops::multi_cluster::{ClusterEvaluation, aggregate_report};
 
     fn make_eval(name: &str, score: u32, pods: u32) -> ClusterEvaluation {
         ClusterEvaluation {
@@ -145,12 +152,13 @@ mod tests {
 
     #[test]
     fn test_context_names_preserved() {
-        let evals = vec![
-            make_eval("cluster-a", 90, 5),
-            make_eval("cluster-b", 80, 5),
-        ];
+        let evals = vec![make_eval("cluster-a", 90, 5), make_eval("cluster-b", 80, 5)];
         let report = aggregate_report(evals);
-        let names: Vec<&str> = report.clusters.iter().map(|c| c.context_name.as_str()).collect();
+        let names: Vec<&str> = report
+            .clusters
+            .iter()
+            .map(|c| c.context_name.as_str())
+            .collect();
         assert!(names.contains(&"cluster-a"));
         assert!(names.contains(&"cluster-b"));
     }
