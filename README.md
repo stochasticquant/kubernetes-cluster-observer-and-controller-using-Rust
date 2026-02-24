@@ -1,3 +1,8 @@
+[![CI](https://github.com/stochasticquant/kubernetes-cluster-observer-and-controller-using-Rust/actions/workflows/ci.yml/badge.svg)](https://github.com/stochasticquant/kubernetes-cluster-observer-and-controller-using-Rust/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-2024_Edition-orange.svg)](https://www.rust-lang.org/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.26+-326CE5.svg)](https://kubernetes.io/)
+
 # kube-devops — Kubernetes Observability & Policy Controller
 
 A production-grade Kubernetes governance platform written in Rust. Enforces
