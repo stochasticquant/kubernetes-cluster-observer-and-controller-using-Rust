@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project is a structured, production‑grade learning journey where
+This project is a structured, production-grade learning journey where
 you design and build a Kubernetes Observability & Policy Controller in
 Rust from scratch.
 
@@ -14,19 +14,21 @@ By the end of this roadmap, you will have implemented:
 -   A Full Kubernetes Operator
 -   A Validating Admission Webhook
 -   Prometheus Metrics Integration
--   Production‑ready deployment manifests
--   High‑availability controller architecture
+-   Production-ready deployment manifests
+-   High-availability controller architecture
+-   Multi-cluster governance
+-   Policy bundles & GitOps compatibility
 
 This mirrors real-world platform engineering systems such as Kyverno and
 OPA Gatekeeper --- built entirely by you.
 
 ------------------------------------------------------------------------
 
-# Step 1 --- Rust Foundations (CLI Development)
+# Step 1 --- Rust Foundations (CLI Development) (Completed)
 
 ## Goal
 
-Build a production‑ready Rust CLI application without Kubernetes
+Build a production-ready Rust CLI application without Kubernetes
 integration.
 
 ## What You Learn
@@ -42,15 +44,20 @@ integration.
 
 A compiled static binary:
 
-kube-devops check kube-devops version
+```
+kube-devops check
+kube-devops version
+```
 
 Architecture:
 
+```
 src/ ├── main.rs ├── cli.rs └── commands/
+```
 
 ------------------------------------------------------------------------
 
-# Step 2 --- Kubernetes API Integration (Read‑Only Client)
+# Step 2 --- Kubernetes API Integration (Read-Only Client) (Completed)
 
 ## Goal
 
@@ -64,7 +71,9 @@ Connect your Rust CLI to Kubernetes and list cluster workloads.
 
 ## Command
 
+```
 kube-devops list pods
+```
 
 ## Output
 
@@ -82,7 +91,7 @@ kube-devops list pods
 
 ------------------------------------------------------------------------
 
-# Step 3 --- DevOps Governance Analyzer
+# Step 3 --- DevOps Governance Analyzer (Completed)
 
 ## Goal
 
@@ -90,45 +99,52 @@ Build a real DevOps audit engine.
 
 ## Command
 
+```
 kube-devops analyze
+```
 
 ## Detect Violations
 
 -   Missing resource limits
--   Containers running as root
 -   Missing liveness/readiness probes
 -   Images using :latest
--   Privileged containers
+-   High restart counts
+-   Pending pods
 
-This becomes a real cluster audit tool suitable for production
-environments.
+## Deliverable
+
+A cluster audit tool with weighted scoring and health classification
+(Healthy / Stable / Degraded / Critical).
 
 ------------------------------------------------------------------------
 
-# Step 4 --- Real-Time Watch Engine
+# Step 4 --- Real-Time Watch Engine (Completed)
 
 ## Goal
 
-Convert the CLI into a long‑running monitor.
+Convert the CLI into a long-running monitor.
 
 ## Command
 
-kube-devops monitor
+```
+kube-devops watch
+```
 
 ## Capabilities
 
--   Watch Pod events
--   React to new workloads
+-   Watch Pod events via Kubernetes Watch API
+-   React to new workloads in real time
 -   Real-time governance scoring
+-   Leader election via Kubernetes Lease API
+-   HTTP server (:8080) with `/healthz`, `/readyz`, `/metrics`
+-   Prometheus metrics: `cluster_health_score`, `namespace_health_score`, `pod_events_total`
 
 ## Concepts Learned
 
--   Informers
--   Watch API
--   Event streams
+-   Watch API and event streams
 -   Async event loops
-
-Your tool now behaves like a Kubernetes controller.
+-   Leader election patterns
+-   Prometheus metrics
 
 ------------------------------------------------------------------------
 
@@ -167,7 +183,6 @@ spec:
 -   Graceful shutdown via `tokio::select!` + `signal::ctrl_c()`
 -   CLI commands: `crd generate`, `crd install`, `reconcile`
 -   Library + binary crate split for testability
--   98 tests (61 lib + 18 bin + 6 governance integration + 13 operator integration)
 
 ## Commands
 
@@ -177,141 +192,182 @@ kube-devops crd install    # Install CRD into cluster
 kube-devops reconcile      # Start the operator reconcile loop
 ```
 
-This is real operator engineering — the same pattern used by Kyverno,
-OPA Gatekeeper, and every production Kubernetes operator.
-
 ------------------------------------------------------------------------
 
-# Step 6 --- Policy Enforcement Mode
+# Step 6 --- Policy Enforcement Mode (Completed)
 
 ## Goal
 
 Move from detection to enforcement.
 
-## Features
+## What Was Implemented
 
--   Patch workloads automatically
--   Add missing resource limits
--   Reject forbidden configurations
-
-You now build cluster-level DevOps automation.
+-   Enforcement mode (`audit` / `enforce`) on DevOpsPolicy CRD
+-   Automatic remediation: patches Deployments, StatefulSets, DaemonSets
+-   Patchable violations: missing probes, missing resource limits
+-   Non-patchable violations remain detection-only
+-   System namespace protection (never enforce in `kube-system`, `cert-manager`, etc.)
+-   Annotation audit trail (`devops.stochastic.io/patched-by`)
+-   Workload deduplication per reconcile cycle
+-   Prometheus enforcement metrics
 
 ------------------------------------------------------------------------
 
-# Step 7 --- Admission Webhook
+# Step 7 --- Admission Webhook (Completed)
 
 ## Goal
 
 Prevent policy violations at creation time.
 
-## Build
+## What Was Implemented
 
--   Validating admission webhook in Rust
--   HTTPS server
--   TLS certificates
--   Kubernetes webhook configuration
+-   Validating admission webhook (HTTPS, port 8443)
+-   Self-signed TLS certificate generation via `rcgen`
+-   Policy-driven admission: reject `:latest` tags, missing probes
+-   Fail-open design — errors never block the cluster
+-   System namespace bypass
+-   Runtime-only checks (restarts, pending) automatically skipped
 
-Pods using :latest or privileged containers can now be rejected before
-deployment.
+## Commands
+
+```
+kube-devops webhook serve
+kube-devops webhook cert-generate
+kube-devops webhook install-config --ca-bundle-path ca.crt
+```
 
 ------------------------------------------------------------------------
 
-# Step 8 --- Prometheus Metrics Integration
+# Step 8 --- Prometheus Metrics Integration (Completed)
 
 ## Goal
 
-Add observability to your controller.
+Add comprehensive observability to the controller.
 
-## Metrics
+## What Was Implemented
 
--   Policy violations total
--   Remediations applied
--   Pods scanned
--   Rejections count
+-   16+ Prometheus metrics across watch, reconcile, and webhook
+-   Reconcile HTTP server on port 9090
+-   ServiceMonitor manifests for Prometheus auto-discovery
+-   Grafana dashboard ConfigMap with 26 panels across 4 rows
 
-Expose /metrics endpoint.
+## Commands
 
-Deploy: - Service - ServiceMonitor - Prometheus scraping - Grafana
-dashboard
-
-Enterprise-grade observability.
-
-------------------------------------------------------------------------
-
-# Step 9 --- High Availability & Production Hardening
-
-## Add
-
--   Leader election
--   Multi-replica deployment
--   PodDisruptionBudget
--   Health & readiness probes
--   Structured logging (tracing crate)
--   Hardened container images
-
-Deploy across multi-node clusters for production resilience.
+```
+kube-devops observability generate-all
+kube-devops observability generate-service-monitors
+kube-devops observability generate-dashboard
+```
 
 ------------------------------------------------------------------------
 
-# Step 10 --- Multi-Cluster Governance & Advanced Policy Engine
+# Step 9 --- High Availability & Production Hardening (Completed)
 
-## Extend System
+## Goal
 
--   Multi-cluster support
--   Store audit results in CRDs
--   Severity levels
--   Policy bundles
--   GitOps compatibility
+Production-grade deployment infrastructure.
 
-At this stage you have built:
+## What Was Implemented
 
--   CLI
--   Controller
--   Operator
--   Admission Webhook
--   Metrics system
--   Production-grade governance tool
+-   Multi-stage Dockerfile (rust:slim-bookworm → debian:bookworm-slim)
+-   Non-root container user (UID 1000)
+-   Kubernetes deployment manifests (Namespace, RBAC, Deployments, PDBs)
+-   3 Deployments × 2 replicas with security hardening
+-   3 PodDisruptionBudgets (minAvailable: 1)
+-   Helm chart with 18 templates and configurable values
+-   Live deployment on 9-node cluster
 
-Equivalent in scope to simplified versions of: - Kyverno - OPA
-Gatekeeper - Prometheus-based monitoring stacks
+## Commands
+
+```
+kube-devops deploy generate-all
+kube-devops deploy generate-rbac
+kube-devops deploy generate-deployments
+```
+
+------------------------------------------------------------------------
+
+# Step 10 --- Multi-Cluster Governance & Advanced Policy Engine (Completed)
+
+## Goal
+
+Extend the platform to multi-cluster governance with policy bundles,
+severity levels, and GitOps compatibility.
+
+## What Was Implemented
+
+-   Multi-cluster kubeconfig support (list contexts, evaluate clusters, aggregate reports)
+-   Severity levels (Critical, High, Medium, Low) for fine-grained violation control
+-   Per-violation severity overrides on DevOpsPolicy CRD
+-   3 built-in policy bundles: baseline, restricted, permissive
+-   CRD-stored audit results (`PolicyAuditResult`) for compliance tracking
+-   GitOps: export, import (with dry-run), diff policies against cluster state
+-   Severity-aware admission webhook filtering
+-   New Prometheus metrics: `violations_by_severity`, `audit_results_total`
+
+## Commands
+
+```
+kube-devops policy bundle-list
+kube-devops policy bundle-show <name>
+kube-devops policy bundle-apply <name> --namespace <ns>
+kube-devops policy export --namespace <ns>
+kube-devops policy import <file> [--dry-run]
+kube-devops policy diff <file>
+kube-devops multi-cluster list-contexts
+kube-devops multi-cluster analyze [--contexts ...] [--bundle ...] [--per-cluster]
+```
 
 ------------------------------------------------------------------------
 
 # Skills Mastered
 
-## Rust (Learned through Step 5)
+## Rust
 
 -   Ownership & lifetimes
 -   Async programming (tokio, futures, streams)
 -   Traits & generics
 -   Error handling (anyhow, Result)
--   HTTP servers (axum)
+-   HTTP/HTTPS servers (axum, axum-server with rustls)
 -   Structured logging (tracing)
 -   Testing strategies (unit, integration, synthetic objects)
 -   Library + binary crate architecture
 -   Derive macros (`CustomResource`, `JsonSchema`)
 -   Serde serialization (`rename_all`, `skip_serializing_if`)
+-   TLS certificate generation (rcgen)
+-   Prometheus client metrics
 
-## Kubernetes (Learned through Step 5)
+## Kubernetes
 
--   API objects (Pod, Lease, CRD)
+-   API objects (Pod, Lease, CRD, Service, ServiceMonitor)
 -   Controllers & reconciliation (`kube_runtime::Controller`)
 -   Custom Resource Definitions (spec, status, schema generation)
 -   Finalizers (add/remove lifecycle, safe deletion)
 -   Status sub-resources (patch updates)
 -   Generation-based deduplication
--   RBAC fundamentals
+-   RBAC (ClusterRole, ServiceAccount, ClusterRoleBinding)
 -   Leader election (Lease API)
 -   Watch API (event streams)
--   Observability patterns (Prometheus)
+-   Validating Admission Webhooks (HTTPS, TLS, webhook configuration)
+-   Multi-cluster kubeconfig management
+-   Helm chart authoring (templates, values, helpers)
+-   PodDisruptionBudgets
+-   Security contexts (runAsNonRoot, readOnlyRootFilesystem)
 
-## DevOps & Platform Engineering (Learned through Step 5)
+## DevOps & Platform Engineering
 
 -   Declarative policy management (CRD-driven governance)
 -   Cluster governance (weighted scoring, health classification)
+-   Policy enforcement (audit/enforce, auto-remediation)
+-   Admission control (reject at creation time, fail-open)
+-   Multi-cluster governance (aggregate scoring)
+-   Policy bundles (template-based onboarding)
+-   GitOps compatibility (export/import/diff)
+-   Observability (Prometheus metrics, Grafana dashboards, ServiceMonitors)
 -   Graceful shutdown patterns (signal handling)
--   Production observability (Prometheus metrics)
--   Test-driven development (98 tests, no cluster required)
+-   Container image build (multi-stage Dockerfile)
+-   Production hardening (non-root, PDBs, resource limits, probes)
+-   Test-driven development (314 tests, no cluster required)
 
 ------------------------------------------------------------------------
 
@@ -322,3 +378,11 @@ engineering Kubernetes.
 
 You build real infrastructure-grade software --- not tutorials, but
 platform engineering systems.
+
+**Final stats:** 25 CLI subcommands, 314 tests, 16+ Prometheus metrics,
+26 Grafana panels, 18 Helm templates, 3 policy bundles, multi-cluster
+governance, and a production deployment on a 9-node cluster.
+
+------------------------------------------------------------------------
+
+**Last Updated:** 2026-02-24

@@ -148,7 +148,7 @@ helm template kube-devops ./helm/kube-devops
 | Value | Default | Description |
 |---|---|---|
 | `image.repository` | `192.168.1.68:5000/kube-devops` | Container image repository |
-| `image.tag` | `v0.1.2` | Image tag |
+| `image.tag` | `v0.2.0` | Image tag |
 | `image.pullPolicy` | `IfNotPresent` | Pull policy |
 | `replicaCount` | `2` | Replicas per component |
 | `resources.requests.memory` | `64Mi` | Memory request |
