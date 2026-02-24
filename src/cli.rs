@@ -55,6 +55,18 @@ pub enum Commands {
         #[command(subcommand)]
         action: DeployAction,
     },
+
+    /// Manage policies and policy bundles
+    Policy {
+        #[command(subcommand)]
+        action: PolicyAction,
+    },
+
+    /// Multi-cluster governance analysis
+    MultiCluster {
+        #[command(subcommand)]
+        action: MultiClusterAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -124,4 +136,69 @@ pub enum DeployAction {
 
     /// Print Deployment manifests only (watch + reconcile + webhook)
     GenerateDeployments,
+}
+
+#[derive(Subcommand)]
+pub enum PolicyAction {
+    /// List available policy bundles
+    BundleList,
+
+    /// Show details of a policy bundle
+    BundleShow {
+        /// Bundle name (baseline, restricted, permissive)
+        name: String,
+    },
+
+    /// Generate a DevOpsPolicy YAML from a bundle template
+    BundleApply {
+        /// Bundle name
+        name: String,
+        /// Target namespace
+        #[arg(long, default_value = "default")]
+        namespace: String,
+        /// Policy resource name
+        #[arg(long, default_value = "devops-policy")]
+        policy_name: String,
+    },
+
+    /// Export DevOpsPolicies from a namespace as YAML
+    Export {
+        /// Namespace to export from
+        #[arg(long, default_value = "default")]
+        namespace: String,
+    },
+
+    /// Import DevOpsPolicies from a YAML file
+    Import {
+        /// Path to YAML file
+        file: String,
+        /// Preview changes without applying
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Diff local YAML policies against cluster state
+    Diff {
+        /// Path to YAML file
+        file: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MultiClusterAction {
+    /// List available kubeconfig contexts
+    ListContexts,
+
+    /// Analyze clusters against a policy bundle
+    Analyze {
+        /// Comma-separated list of contexts (default: all)
+        #[arg(long, value_delimiter = ',')]
+        contexts: Option<Vec<String>>,
+        /// Bundle to evaluate against (default: baseline)
+        #[arg(long)]
+        bundle: Option<String>,
+        /// Show per-cluster breakdown
+        #[arg(long)]
+        per_cluster: bool,
+    },
 }

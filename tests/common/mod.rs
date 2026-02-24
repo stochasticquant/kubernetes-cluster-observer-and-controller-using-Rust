@@ -2,6 +2,7 @@ use k8s_openapi::api::core::v1::{
     Container, ContainerStatus, Pod, PodSpec, PodStatus, Probe,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
+use kube_devops::crd::{DevOpsPolicySpec, Severity, SeverityOverrides};
 
 #[allow(dead_code)]
 pub fn make_test_pod(
@@ -45,6 +46,29 @@ pub fn make_test_pod(
             }]),
             ..Default::default()
         }),
+    }
+}
+
+/// Create a DevOpsPolicySpec with all checks enabled and custom severity overrides.
+#[allow(dead_code)]
+pub fn make_test_policy_with_severity(
+    latest_tag: Severity,
+    missing_liveness: Severity,
+    missing_readiness: Severity,
+) -> DevOpsPolicySpec {
+    DevOpsPolicySpec {
+        forbid_latest_tag: Some(true),
+        require_liveness_probe: Some(true),
+        require_readiness_probe: Some(true),
+        max_restart_count: Some(3),
+        forbid_pending_duration: Some(300),
+        severity_overrides: Some(SeverityOverrides {
+            latest_tag: Some(latest_tag),
+            missing_liveness: Some(missing_liveness),
+            missing_readiness: Some(missing_readiness),
+            ..Default::default()
+        }),
+        ..Default::default()
     }
 }
 

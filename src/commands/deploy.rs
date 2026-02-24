@@ -48,6 +48,9 @@ rules:
   - apiGroups: ["devops.stochastic.io"]
     resources: ["devopspolicies/status"]
     verbs: ["patch"]
+  - apiGroups: ["devops.stochastic.io"]
+    resources: ["policyauditresults"]
+    verbs: ["get", "list", "create", "delete"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
@@ -283,7 +286,7 @@ mod tests {
 
         assert_eq!(doc["kind"], "ClusterRole");
         let rules = doc["rules"].as_sequence().expect("rules should be a sequence");
-        assert_eq!(rules.len(), 6, "ClusterRole should have 6 rules");
+        assert_eq!(rules.len(), 7, "ClusterRole should have 7 rules");
     }
 
     #[test]
